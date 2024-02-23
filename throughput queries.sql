@@ -365,3 +365,153 @@ GROUP BY fc.fiscal_year, fc.fiscal_month
 ORDER BY fc.fiscal_year, fc.fiscal_month
 ;
 
+SELECT DISTINCT eh.eq_class FROM EQUIPMENT_HISTORY eh ;
+SELECT DISTINCT eq.sztp_class FROM equipment eq;
+SELECT * from
+(SELECT 
+	DISTINCT to_number(eq.sztp_eqsz_id) AS len
+	, count(*) 
+FROM equipment eq 
+WHERE 
+	eq.SZTP_CLASS = 'CTR' 
+	AND REGEXP_LIKE(eq.SZTP_EQSZ_ID, '^[0-9]+$')
+GROUP BY eq.SZTP_EQSZ_ID 
+ORDER BY eq.SZTP_EQSZ_ID) t1
+WHERE to_number(t1.len) > 53
+;
+
+
+-- Good size types for throughput with their quasi-numerical lengths
+SELECT 
+	sztp_id, len
+FROM 
+	(SELECT 
+		t2.sztp_id
+		, t2.len
+		, t2.cnt
+		, ROW_NUMBER() OVER	(PARTITION BY t2.sztp_id ORDER BY t2.cnt DESC) AS rn
+	FROM 
+		(SELECT t1.*, et.name, est.name
+		FROM (
+		    SELECT
+		    	to_number(eq.sztp_eqsz_id) AS len
+		    	, eq.sztp_class
+		    	, eq.sztp_id
+		    	, eq.sztp_eqtp_id
+		    	, count(*) AS cnt
+		    FROM equipment eq
+		    WHERE eq.sztp_class = 'CTR' AND REGEXP_LIKE(eq.SZTP_EQSZ_ID, '^[0-9]+$')
+		    GROUP BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+		    ORDER BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+		) t1 
+	JOIN equipment_types et ON t1.sztp_eqtp_id = et.id
+	JOIN EQUIPMENT_SIZE_TYPES est ON t1.sztp_id = est.id
+	WHERE NOT t1.sztp_eqtp_id = 'RT' AND NOT t1.sztp_eqtp_id = 'PP'
+	ORDER BY t1.sztp_id) t2 )
+WHERE rn = 1
+;
+
+-- query to report moves and TEUs
+WITH sztp_to_len AS
+	(SELECT 
+		sztp_id, len
+	FROM 
+		(SELECT 
+			t2.sztp_id
+			, t2.len
+			, t2.cnt
+			, ROW_NUMBER() OVER	(PARTITION BY t2.sztp_id ORDER BY t2.cnt DESC) AS rn
+		FROM 
+			(SELECT t1.*, et.name, est.name
+			FROM (
+			    SELECT
+			    	to_number(eq.sztp_eqsz_id) AS len
+			    	, eq.sztp_class
+			    	, eq.sztp_id
+			    	, eq.sztp_eqtp_id
+			    	, count(*) AS cnt
+			    FROM equipment eq
+			    WHERE eq.sztp_class = 'CTR' AND REGEXP_LIKE(eq.SZTP_EQSZ_ID, '^[0-9]+$')
+			    GROUP BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			    --ORDER BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			) t1 
+		JOIN equipment_types et ON t1.sztp_eqtp_id = et.id
+		JOIN EQUIPMENT_SIZE_TYPES est ON t1.sztp_id = est.id
+		WHERE NOT t1.sztp_eqtp_id = 'RT' AND NOT t1.sztp_eqtp_id = 'PP'
+		--ORDER BY t1.sztp_id
+		) t2 )
+	WHERE rn = 1)
+SELECT 
+  EXTRACT (YEAR FROM t3.posted) AS YEAR,
+  EXTRACT(MONTH FROM t3.posted) AS MONTH,
+  COUNT(CASE WHEN t3.wtask_id = 'LOAD' AND t3.transship IS NULL THEN t3.wtask_id END) AS exports,
+  SUM(CASE WHEN t3.wtask_id = 'LOAD' AND t3.transship IS NULL THEN t3.TEU END) AS exports_TEUS,
+  COUNT(CASE WHEN t3.wtask_id = 'UNLOAD' AND t3.transship IS NULL THEN t3.wtask_id END) AS imports,
+  SUM(CASE WHEN t3.wtask_id = 'UNLOAD' AND t3.transship IS NULL THEN t3.TEU END) AS imports_TEUS,
+  COUNT(CASE WHEN (t3.wtask_id = 'LOAD' OR t3.wtask_id = 'UNLOAD') AND t3.transship IS NOT NULL THEN t3.wtask_id END) AS transships,
+  SUM(CASE WHEN (t3.wtask_id = 'LOAD' OR t3.wtask_id = 'UNLOAD') AND t3.transship IS NOT NULL THEN t3.TEU END) AS transships_TEUS,
+  COUNT(CASE WHEN (t3.wtask_id = 'LOAD' OR t3.wtask_id = 'UNLOAD')THEN t3.wtask_id END) AS total,
+  SUM(CASE WHEN (t3.wtask_id = 'LOAD' OR t3.wtask_id = 'UNLOAD')THEN t3.TEU END) AS total_TEU
+FROM 
+  (SELECT
+		sztp_to_len.len
+		, sztp_to_len.len / 20 AS TEU
+		, eh.sztp_id
+		, eh.*
+	FROM equipment_history eh
+	JOIN sztp_to_len ON eh.sztp_id = sztp_to_len.sztp_id
+	WHERE posted BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2023-01-31', 'YYYY-MM-DD')
+	) t3
+GROUP BY EXTRACT (YEAR FROM t3.posted), EXTRACT (MONTH FROM t3.posted)
+ORDER BY EXTRACT (YEAR FROM t3.posted), EXTRACT (MONTH FROM t3.posted)
+;
+
+SELECT
+  EXTRACT(MONTH FROM posted) AS MONTH,
+  COUNT(CASE WHEN wtask_id = 'LOAD' AND transship IS NULL THEN wtask_id END) AS exports,
+  COUNT(CASE WHEN wtask_id = 'UNLOAD' AND transship IS NULL THEN wtask_id END) AS imports,
+  COUNT(CASE WHEN (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD') AND transship IS NOT NULL THEN wtask_id END) AS transships,
+  COUNT(CASE WHEN (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')THEN wtask_id END) AS total
+FROM equipment_history
+WHERE EXTRACT(YEAR FROM posted) = 2023
+GROUP BY EXTRACT(MONTH FROM posted)
+ORDER BY EXTRACT(MONTH FROM posted);
+
+WITH sztp_to_len AS
+	(SELECT 
+		sztp_id, len
+	FROM 
+		(SELECT 
+			t2.sztp_id
+			, t2.len
+			, t2.cnt
+			, ROW_NUMBER() OVER	(PARTITION BY t2.sztp_id ORDER BY t2.cnt DESC) AS rn
+		FROM 
+			(SELECT t1.*, et.name, est.name
+			FROM (
+			    SELECT
+			    	to_number(eq.sztp_eqsz_id) AS len
+			    	, eq.sztp_class
+			    	, eq.sztp_id
+			    	, eq.sztp_eqtp_id
+			    	, count(*) AS cnt
+			    FROM equipment eq
+			    WHERE eq.sztp_class = 'CTR' AND REGEXP_LIKE(eq.SZTP_EQSZ_ID, '^[0-9]+$')
+			    GROUP BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			    --ORDER BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			) t1 
+		JOIN equipment_types et ON t1.sztp_eqtp_id = et.id
+		JOIN EQUIPMENT_SIZE_TYPES est ON t1.sztp_id = est.id
+		WHERE NOT t1.sztp_eqtp_id = 'RT' AND NOT t1.sztp_eqtp_id = 'PP'
+		--ORDER BY t1.sztp_id
+		) t2 )
+	WHERE rn = 1)
+SELECT
+		sztp_to_len.len
+		, sztp_to_len.len / 20 AS TEU
+		, eh.sztp_id
+		, eh.*
+	FROM equipment_history eh
+	JOIN sztp_to_len ON eh.sztp_id = sztp_to_len.sztp_id
+	WHERE EXTRACT(YEAR FROM posted) = 2024
+;
