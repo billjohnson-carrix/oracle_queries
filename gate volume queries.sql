@@ -415,7 +415,7 @@ FROM
 	GATE_TRANSACTIONS gt 
 JOIN sztp_to_len ON sztp_to_len.sztp_id = gt.ctr_sztp_id
 WHERE 
-	(EXTRACT (YEAR FROM gt.created) = 2023 OR EXTRACT (YEAR FROM gt.created) = 2022)
+	(EXTRACT (YEAR FROM gt.created) >= 2018) -- OR EXTRACT (YEAR FROM gt.created) = 2022)
 	--trunc(gt.created)  BETWEEN to_date('2023-01-01', 'YYYY-MM-DD') AND to_date('2023-01-31','YYYY-MM-DD')
 	AND gt.ctr_nbr IS NOT NULL
 	AND gt.tran_status = 'EIR'
@@ -424,6 +424,10 @@ WHERE
 GROUP BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ORDER BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ;
+
+--Invetigating data issues with C60
+SELECT * FROM GATE_TRANSACTIONS gt ;
+
 
 -- Now the railgate
 WITH sztp_to_len AS

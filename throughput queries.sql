@@ -515,3 +515,89 @@ SELECT
 	JOIN sztp_to_len ON eh.sztp_id = sztp_to_len.sztp_id
 	WHERE EXTRACT(YEAR FROM posted) = 2024
 ;
+
+--Starting to compile throughput by the vessel
+SELECT 
+	v.NAME, vv.IN_VOY_NBR, vv.OUT_VOY_NBR, vv.eta, vv.ata, vv.etd, vv.atd, vv.*
+FROM VESSEL_VISITS vv 
+JOIN VESSELS v ON vv.vsl_id = v.ID 
+WHERE (trunc(vv.atd) BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		OR (vv.atd IS NULL AND trunc(vv.etd) BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+		AND vv.WORK_STARTED IS NOT NULL
+ORDER BY trunc(vv.atd), trunc(vv.ATa) 
+;
+
+-- Had to make a special inclusion for the AGORYU 2202E/2202W
+-- Required actual time of arrival or departure and place in period by atd or etd if ata is null
+-- For PCT:
+-- Jul-2023 through Dec-2023 33 records
+-- Nov-2022 through Aug-2023 69 records
+-- May-2022 through Dec-2022 83 records
+-- Feb-2022 through Apr-2022 34 records
+-- Feb-2022 through Dec-2023 (everything in the good run of data) 
+-- The following query replicates the list of vessel visits from the SLC reports from Feb-22 through Dec-23. (189 total records)
+SELECT 
+	v.NAME, vv.IN_VOY_NBR, vv.OUT_VOY_NBR, vv.eta, vv.ata, vv.etd, vv.atd, vv.*
+FROM VESSEL_VISITS vv 
+JOIN VESSELS v ON vv.vsl_id = v.ID 
+WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+		AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+ORDER BY trunc(vv.atd), trunc(vv.ATa) 
+;
+
+--The vessel_summary and vessel_statistics tables are crap for PCT. I'll have to compile moves from equipment history.
+--Imports
+SELECT
+	v.name, vv.VSL_ID, vv.IN_VOY_NBR, vv.atd, COALESCE (count(eh.vsl_id), 0) AS imports
+FROM VESSEL_VISITS vv 
+LEFT JOIN EQUIPMENT_HISTORY eh ON vv.vsl_id = eh.vsl_id AND vv.IN_VOY_NBR = eh.VISIT_ID 
+JOIN VESSELS v ON v.id = vv.VSL_ID 
+WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+		AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+GROUP BY v.name, vv.vsl_id, vv.IN_VOY_NBR, vv.atd
+ORDER BY vv.atd
+;
+
+--Exports
+SELECT
+	v.name, vv.VSL_ID, vv.OUT_VOY_NBR , vv.atd, COALESCE (count(eh.vsl_id), 0) AS exports
+FROM VESSEL_VISITS vv 
+LEFT JOIN EQUIPMENT_HISTORY eh ON vv.vsl_id = eh.vsl_id AND vv.OUT_VOY_NBR  = eh.VISIT_ID 
+JOIN VESSELS v ON v.id = vv.VSL_ID 
+WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+		AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+GROUP BY v.name, vv.vsl_id, vv.OUT_VOY_NBR, vv.atd
+ORDER BY vv.atd
+;
+--Scratch work
+SELECT * FROM VESSEL_VISITS vv WHERE 
+	(vv.VSL_ID = 'AGORYU' OR vv.vsl_id = 'COSJASM' OR VV.VSL_ID = 'CHETCO' OR VV.VSL_ID = 'MAUNA' OR VV.VSL_ID = 'ZHENH27')
+	AND trunc(vv.atd) BETWEEN to_date('2022-10-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+ORDER BY VV.VSL_iD, vv.eta;
+SELECT * FROM VESSEL_VISITS vv WHERE vv.VSL_ID = 'SHEFFIE';
+SELECT * FROM EQUIPMENT_HISTORY eh
+WHERE 
+	(eh.vsl_id = 'COSJASM' OR eh.VSL_ID = 'CHETCO' OR eh.VSL_ID = 'MAUNA' OR eh.VSL_ID = 'ZHENH27')
+	AND trunc(eh.posted) BETWEEN to_date('2022-10-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+--GROUP BY eh.vsl_id
+ORDER BY eh.VSL_iD;
+SELECT * FROM VESSELS v WHERE v.LINE_ID = 'TFL';
+SELECT count(*) FROM VESSEL_SUMMARY vs ;
+SELECT * FROM VESSEL_SUMMARY vs ;
+SELECT
+	vv_vsl_id
+	, created
+FROM VESSEL_STATISTICS vs 
+--WHERE trunc(vs.CREATED) BETWEEN  to_date('2022-10-29', 'YYYY-MM-DD') AND to_date('2023-08-25', 'YYYY-MM-DD')
+GROUP by vv_vsl_id, created
+ORDER BY trunc(vs.CREATED);
+SELECT 
+	v.NAME, vv.IN_VOY_NBR, vv.OUT_VOY_NBR, vv.eta, vv.ata, vv.etd, vv.atd, vv.*
+FROM VESSEL_VISITS vv 
+JOIN VESSELS v ON vv.vsl_id = v.ID 
+WHERE trunc(vv.atd) BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+ORDER BY trunc(vv.atd), trunc(vv.ATa) 
+;
