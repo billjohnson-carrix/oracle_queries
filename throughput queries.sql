@@ -543,7 +543,8 @@ JOIN VESSELS v ON vv.vsl_id = v.ID
 WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
 		OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
 		AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
-ORDER BY trunc(vv.atd), trunc(vv.ATa) 
+--ORDER BY trunc(vv.atd), trunc(vv.ATa) 
+ORDER BY vv.VSL_ID, vv.IN_VOY_NBR, vv.OUT_VOY_NBR 
 ;
 
 --The vessel_summary and vessel_statistics tables are crap for PCT. I'll have to compile moves from equipment history.
@@ -601,3 +602,363 @@ JOIN VESSELS v ON vv.vsl_id = v.ID
 WHERE trunc(vv.atd) BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
 ORDER BY trunc(vv.atd), trunc(vv.ATa) 
 ;
+
+--Trying to overcome manual entry of vessel visits
+SELECT 
+	v.name, eh.VSL_ID, eh.VOY_NBR 
+FROM EQUIPMENT_HISTORY eh 
+JOIN VESSELS v ON v.id = eh.VSL_ID 
+WHERE 
+	eh.VSL_ID IS NOT NULL 
+	AND eh.VOY_NBR IS NOT NULL 
+	AND (trunc(eh.posted) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD'))
+	AND (eh.WTASK_ID = 'LOAD' OR eh.WTASK_ID = 'UNLOAD')
+GROUP BY v.name, eh.vsl_id, eh.VOY_NBR 
+ORDER BY v.NAME
+;
+SELECT 
+	*
+FROM 
+	(SELECT
+		v.name, vv.VSL_ID, vv.IN_VOY_NBR AS voy_nbr
+	FROM VESSEL_VISITS vv 
+	JOIN VESSELS v ON v.id = vv.VSL_ID 
+	WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+			OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+			AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+	GROUP BY v.name, vv.vsl_id, vv.IN_VOY_NBR
+	UNION
+	SELECT
+		v.name, vv.VSL_ID, vv.OUT_VOY_NBR AS voy_nbr
+	FROM VESSEL_VISITS vv 
+	JOIN VESSELS v ON v.id = vv.VSL_ID 
+	WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+			OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+			AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+	GROUP BY v.name, vv.vsl_id, vv.OUT_VOY_NBR) t1
+ORDER BY t1.name, t1.voy_nbr
+;
+WITH 
+	ves_vis AS (
+		SELECT 
+			*
+		FROM 
+			(SELECT
+				v.name, vv.VSL_ID, vv.IN_VOY_NBR AS voy_nbr
+			FROM VESSEL_VISITS vv 
+			JOIN VESSELS v ON v.id = vv.VSL_ID 
+			WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+					OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+					AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+			GROUP BY v.name, vv.vsl_id, vv.IN_VOY_NBR
+			UNION
+			SELECT
+				v.name, vv.VSL_ID, vv.OUT_VOY_NBR AS voy_nbr
+			FROM VESSEL_VISITS vv 
+			JOIN VESSELS v ON v.id = vv.VSL_ID 
+			WHERE (trunc(vv.atd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+					OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+					AND (vv.WORK_STARTED IS NOT NULL OR vv.vsl_id='AGORYU' OR vv.vsl_id='WAN508' OR VV.VSL_ID = 'SHEFFIE')
+			GROUP BY v.name, vv.vsl_id, vv.OUT_VOY_NBR) t1
+	)
+	, equip_his AS (
+		SELECT 
+			v.name, eh.VSL_ID, eh.VOY_NBR 
+		FROM EQUIPMENT_HISTORY eh 
+		JOIN VESSELS v ON v.id = eh.VSL_ID 
+		WHERE 
+			eh.VSL_ID IS NOT NULL 
+			AND eh.VOY_NBR IS NOT NULL 
+			AND (trunc(eh.posted) BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD'))
+			AND (eh.WTASK_ID = 'LOAD' OR eh.WTASK_ID = 'UNLOAD')
+		GROUP BY v.name, eh.vsl_id, eh.VOY_NBR 
+	)
+SELECT
+	vv.name, vv.vsl_id, vv.voy_nbr, eh.name, eh.vsl_id, eh.voy_nbr
+FROM ves_vis vv
+FULL OUTER JOIN equip_his eh ON vv.vsl_id = eh.vsl_id AND vv.voy_nbr = eh.voy_nbr
+ORDER BY vv.name, vv.voy_nbr, eh.name, eh.voy_nbr
+;
+-- Looking up outliers
+SELECT 
+	count(*)
+FROM EQUIPMENT_HISTORY eh 
+WHERE 
+	eh.VSL_ID = 'COSJASM' AND eh.VOY_NBR = '024W'
+	AND (eh.WTASK_ID = 'LOAD' OR eh.WTASK_ID = 'UNLOAD')
+;
+SELECT 
+	*
+--	vv.VSL_ID, vv.IN_VOY_NBR, vv.OUT_VOY_NBR, vv.atd
+FROM VESSEL_VISITS vv 
+WHERE 
+	vv.VSL_ID = 'WAN355' AND (vv.IN_VOY_NBR = '014E' OR vv.OUT_VOY_NBR = '014E')
+;
+--A hopefully better attempt at creating the vessel visit list that shouldn't need manual inclusion of vessels
+/*
+ * It works with two errors for PCT. The BALPEAC 2206E is a correction to the in_voy_nbr of the BAL PEACE. The wrong number in the vessel_visits table is '2152E'.
+ * Actually, I don't know which voyage is correct, but the equipment_history table has broken referential integrity by attributing moves to a vessel visit
+ * that doesn't exist. Also, the COSCO SHIPPING JASMINE, COSJASM, 024E 024W, looks like someone might have invented it. I can't explain why its present. It has moves too.
+ * But this query looks transerrable to other terminals. Yay!
+ */
+SELECT 
+	v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr, COALESCE (count(t1.wtask_id), 0) AS move_count
+FROM 
+	(SELECT 
+		vv.*, eh.wtask_id
+	FROM VESSEL_VISITS vv 
+	JOIN EQUIPMENT_HISTORY eh ON vv.VSL_ID = eh.VSL_ID AND (vv.IN_VOY_NBR = eh.voy_nbr OR vv.OUT_VOY_NBR = eh.VOY_NBR)
+	WHERE 
+		(trunc(vv.atd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+			OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+		 AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')) t1
+JOIN VESSELS v ON v.id = t1.vsl_id
+GROUP BY v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr
+ORDER BY t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr
+;
+-- I'd like the above broken down by imports, exports, and total.
+WITH imports AS (
+	SELECT 
+		v.name
+		, t1.vsl_id
+		, t1.in_voy_nbr
+		, t1.out_voy_nbr
+		, t1.nnatd
+		, t1.wtask_id
+		, COALESCE (count(t1.wtask_id), 0) AS imports
+	FROM 
+		(SELECT 
+			vv.*, eh.wtask_id, COALESCE (vv.atd, vv.etd, vv.ata, vv.eta) AS nnatd
+		FROM VESSEL_VISITS vv 
+		JOIN EQUIPMENT_HISTORY eh ON vv.VSL_ID = eh.VSL_ID AND (vv.IN_VOY_NBR = eh.voy_nbr OR vv.OUT_VOY_NBR = eh.VOY_NBR)
+		WHERE 
+			(trunc(vv.atd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+				OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+			 AND (eh.wtask_id = 'UNLOAD')) t1
+	JOIN VESSELS v ON v.id = t1.vsl_id
+	GROUP BY v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr, t1.nnatd, t1.wtask_id
+)
+SELECT 
+	COALESCE (imports.name, exports.name) AS name
+	, COALESCE (imports.vsl_id, exports.vsl_id) AS vsl_id
+	, COALESCE (imports.in_voy_nbr, exports.in_voy_nbr) AS in_voy_nbr
+	, COALESCE (imports.out_voy_nbr, exports.out_voy_nbr) AS out_voy_nbr
+	, COALESCE (imports.nnatd, exports.nnatd) AS atd
+	, COALESCE (imports.imports, 0) AS imports
+	, COALESCE (exports.exports, 0) AS exports
+	, COALESCE (imports.imports, 0) + COALESCE (exports.exports, 0) AS total
+FROM 
+	(SELECT 
+		v.name
+		, t1.vsl_id
+		, t1.in_voy_nbr
+		, t1.out_voy_nbr
+		, t1.nnatd
+		, t1.wtask_id
+		, COALESCE (count(*), 0) AS exports
+	FROM 
+		(SELECT 
+			vv.*, eh.wtask_id, COALESCE (vv.atd, vv.etd, vv.ata, vv.eta) AS nnatd
+		FROM VESSEL_VISITS vv 
+		JOIN EQUIPMENT_HISTORY eh ON vv.VSL_ID = eh.VSL_ID AND (vv.IN_VOY_NBR = eh.voy_nbr OR vv.OUT_VOY_NBR = eh.VOY_NBR)
+		WHERE 
+			(trunc(vv.atd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+				OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+			 AND (eh.wtask_id = 'LOAD')) t1
+	JOIN VESSELS v ON v.id = t1.vsl_id
+	GROUP BY v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr, t1.nnatd, t1.wtask_id) exports
+FULL OUTER JOIN 
+	imports ON imports.vsl_id = exports.vsl_id 
+	AND imports.in_voy_nbr = exports.in_voy_nbr 
+	AND imports.out_voy_nbr = exports.out_voy_nbr 
+	AND NOT imports.wtask_id = exports.wtask_id
+ORDER BY COALESCE (imports.nnatd, exports.nnatd)
+;
+-- And now to aggregate by fiscal month
+WITH 
+	imports AS (
+		SELECT 
+			v.name
+			, t1.vsl_id
+			, t1.in_voy_nbr
+			, t1.out_voy_nbr
+			, t1.nnatd
+			, t1.wtask_id
+			, COALESCE (count(t1.wtask_id), 0) AS imports
+		FROM 
+			(SELECT 
+				vv.*, eh.wtask_id, COALESCE (vv.atd, vv.etd, vv.ata, vv.eta) AS nnatd
+			FROM VESSEL_VISITS vv 
+			JOIN EQUIPMENT_HISTORY eh ON vv.VSL_ID = eh.VSL_ID AND (vv.IN_VOY_NBR = eh.voy_nbr OR vv.OUT_VOY_NBR = eh.VOY_NBR)
+			WHERE 
+				(trunc(vv.atd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+					OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+				 AND (eh.wtask_id = 'UNLOAD')) t1
+		JOIN VESSELS v ON v.id = t1.vsl_id
+		GROUP BY v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr, t1.nnatd, t1.wtask_id
+	), by_vessel AS ( 
+		SELECT 
+			COALESCE (imports.name, exports.name) AS name
+			, COALESCE (imports.vsl_id, exports.vsl_id) AS vsl_id
+			, COALESCE (imports.in_voy_nbr, exports.in_voy_nbr) AS in_voy_nbr
+			, COALESCE (imports.out_voy_nbr, exports.out_voy_nbr) AS out_voy_nbr
+			, COALESCE (imports.nnatd, exports.nnatd) AS atd
+			, COALESCE (imports.imports, 0) AS imports
+			, COALESCE (exports.exports, 0) AS exports
+			, COALESCE (imports.imports, 0) + COALESCE (exports.exports, 0) AS total
+		FROM 
+			(SELECT 
+				v.name
+				, t1.vsl_id
+				, t1.in_voy_nbr
+				, t1.out_voy_nbr
+				, t1.nnatd
+				, t1.wtask_id
+				, COALESCE (count(*), 0) AS exports
+			FROM 
+				(SELECT 
+					vv.*, eh.wtask_id, COALESCE (vv.atd, vv.etd, vv.ata, vv.eta) AS nnatd
+				FROM VESSEL_VISITS vv 
+				JOIN EQUIPMENT_HISTORY eh ON vv.VSL_ID = eh.VSL_ID AND (vv.IN_VOY_NBR = eh.voy_nbr OR vv.OUT_VOY_NBR = eh.VOY_NBR)
+				WHERE 
+					(trunc(vv.atd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+						OR (vv.atd IS NULL AND vv.ata IS NOT NULL AND trunc(vv.etd) BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')))
+					 AND (eh.wtask_id = 'LOAD')) t1
+			JOIN VESSELS v ON v.id = t1.vsl_id
+			GROUP BY v.name, t1.vsl_id, t1.in_voy_nbr, t1.out_voy_nbr, t1.nnatd, t1.wtask_id) exports
+		FULL OUTER JOIN 
+			imports ON imports.vsl_id = exports.vsl_id 
+			AND imports.in_voy_nbr = exports.in_voy_nbr 
+			AND imports.out_voy_nbr = exports.out_voy_nbr 
+			AND NOT imports.wtask_id = exports.wtask_id
+		)
+	, date_series AS (
+		  SELECT
+		    TO_DATE('2017-12-30', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
+		  FROM dual
+		  CONNECT BY TO_DATE('2018-01-01', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2023-12-31', 'YYYY-MM-DD')
+	)
+	, fiscal_calendar AS (
+		SELECT
+		  date_in_series,
+		  CASE 
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2017-12-30', 'YYYY-MM-DD') AND to_date('2018-01-26', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2018-12-29', 'YYYY-MM-DD') AND to_date('2019-01-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-12-28', 'YYYY-MM-DD') AND to_date('2020-01-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-01-02', 'YYYY-MM-DD') AND to_date('2021-01-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2022-01-28', 'YYYY-MM-DD')
+				OR date_in_series BETWEEN to_date('2022-12-31', 'YYYY-MM-DD') AND to_date('2023-01-27', 'YYYY-MM-DD')
+			THEN 1
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-01-27', 'YYYY-MM-DD') AND to_date('2018-02-23', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-01-26', 'YYYY-MM-DD') AND to_date('2019-02-22', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-02-01', 'YYYY-MM-DD') AND to_date('2020-02-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-01-30', 'YYYY-MM-DD') AND to_date('2021-02-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2022-02-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-01-28', 'YYYY-MM-DD') AND to_date('2023-02-24', 'YYYY-MM-DD')
+		    THEN 2
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-02-24', 'YYYY-MM-DD') AND to_date('2018-03-30', 'YYYY-MM-DD')
+				OR date_in_series BETWEEN to_date('2019-02-23', 'YYYY-MM-DD') AND to_date('2019-03-29', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2020-02-29', 'YYYY-MM-DD') AND to_date('2020-04-03', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2021-02-27', 'YYYY-MM-DD') AND to_date('2021-04-02', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2022-04-01', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2023-02-25', 'YYYY-MM-DD') AND to_date('2023-03-31', 'YYYY-MM-DD')
+			THEN 3    
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-03-31', 'YYYY-MM-DD') AND to_date('2018-04-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-03-30', 'YYYY-MM-DD') AND to_date('2019-04-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-04-04', 'YYYY-MM-DD') AND to_date('2020-05-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-04-03', 'YYYY-MM-DD') AND to_date('2021-04-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-04-02', 'YYYY-MM-DD') AND to_date('2022-04-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-04-01', 'YYYY-MM-DD') AND to_date('2023-04-28', 'YYYY-MM-DD')
+		    THEN 4    
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-04-28', 'YYYY-MM-DD') AND to_date('2018-05-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-04-27', 'YYYY-MM-DD') AND to_date('2019-05-24', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-05-02', 'YYYY-MM-DD') AND to_date('2020-05-29', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-05-01', 'YYYY-MM-DD') AND to_date('2021-05-28', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-04-30', 'YYYY-MM-DD') AND to_date('2022-05-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-04-29', 'YYYY-MM-DD') AND to_date('2023-05-26', 'YYYY-MM-DD')
+		    THEN 5
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-05-26', 'YYYY-MM-DD') AND to_date('2018-06-29', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2019-05-25', 'YYYY-MM-DD') AND to_date('2019-06-28', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2020-05-30', 'YYYY-MM-DD') AND to_date('2020-07-03', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2021-05-29', 'YYYY-MM-DD') AND to_date('2021-07-02', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2022-05-28', 'YYYY-MM-DD') AND to_date('2022-07-01', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2023-05-27', 'YYYY-MM-DD') AND to_date('2023-06-30', 'YYYY-MM-DD')
+		    THEN 6
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-06-30', 'YYYY-MM-DD') AND to_date('2018-07-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-06-29', 'YYYY-MM-DD') AND to_date('2019-07-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-07-04', 'YYYY-MM-DD') AND to_date('2020-07-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-07-03', 'YYYY-MM-DD') AND to_date('2021-07-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-07-02', 'YYYY-MM-DD') AND to_date('2022-07-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-07-28', 'YYYY-MM-DD')
+		    THEN 7
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-07-28', 'YYYY-MM-DD') AND to_date('2018-08-24', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-07-27', 'YYYY-MM-DD') AND to_date('2019-08-23', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-08-01', 'YYYY-MM-DD') AND to_date('2020-08-28', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-07-31', 'YYYY-MM-DD') AND to_date('2021-08-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-07-30', 'YYYY-MM-DD') AND to_date('2022-08-26', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-07-29', 'YYYY-MM-DD') AND to_date('2023-08-25', 'YYYY-MM-DD')
+		    THEN 8
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-08-25', 'YYYY-MM-DD') AND to_date('2018-09-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-08-24', 'YYYY-MM-DD') AND to_date('2019-09-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-08-29', 'YYYY-MM-DD') AND to_date('2020-10-02', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-08-28', 'YYYY-MM-DD') AND to_date('2021-10-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-08-27', 'YYYY-MM-DD') AND to_date('2022-09-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-08-26', 'YYYY-MM-DD') AND to_date('2023-09-29', 'YYYY-MM-DD')
+		    THEN 9
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-09-29', 'YYYY-MM-DD') AND to_date('2018-10-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-09-28', 'YYYY-MM-DD') AND to_date('2019-10-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-10-03', 'YYYY-MM-DD') AND to_date('2020-10-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-10-02', 'YYYY-MM-DD') AND to_date('2021-10-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-10-01', 'YYYY-MM-DD') AND to_date('2022-10-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-09-30', 'YYYY-MM-DD') AND to_date('2023-10-27', 'YYYY-MM-DD')
+		    THEN 10
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-10-27', 'YYYY-MM-DD') AND to_date('2018-11-23', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-10-26', 'YYYY-MM-DD') AND to_date('2019-11-22', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-10-31', 'YYYY-MM-DD') AND to_date('2020-11-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-10-30', 'YYYY-MM-DD') AND to_date('2021-11-26', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-10-29', 'YYYY-MM-DD') AND to_date('2022-11-25', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-10-28', 'YYYY-MM-DD') AND to_date('2023-11-24', 'YYYY-MM-DD')
+		    THEN 11
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-11-24', 'YYYY-MM-DD') AND to_date('2018-12-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-11-23', 'YYYY-MM-DD') AND to_date('2019-12-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-11-28', 'YYYY-MM-DD') AND to_date('2021-01-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-11-27', 'YYYY-MM-DD') AND to_date('2021-12-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-11-26', 'YYYY-MM-DD') AND to_date('2022-12-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-11-25', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		    THEN 12
+		  END AS fiscal_month,
+		  CASE 
+		    WHEN date_in_series BETWEEN to_date('2017-12-30', 'YYYY-MM-DD') AND to_date('2018-12-28', 'YYYY-MM-DD') THEN 2018
+		    WHEN date_in_series BETWEEN to_date('2018-12-29', 'YYYY-MM-DD') AND to_date('2019-12-27', 'YYYY-MM-DD') THEN 2019
+		    WHEN date_in_series BETWEEN to_date('2019-12-28', 'YYYY-MM-DD') AND to_date('2021-01-01', 'YYYY-MM-DD') THEN 2020
+		    WHEN date_in_series BETWEEN to_date('2021-01-02', 'YYYY-MM-DD') AND to_date('2021-12-31', 'YYYY-MM-DD') THEN 2021
+		    WHEN date_in_series BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2022-12-30', 'YYYY-MM-DD') THEN 2022
+		    WHEN date_in_series BETWEEN to_date('2022-12-31', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD') THEN 2023
+		  END AS fiscal_year
+		FROM date_series
+	)
+SELECT
+	fc.fiscal_year AS year
+	, fc.fiscal_month AS MONTH
+	, bv.*
+	--, sum(bv.imports) AS imports
+	--, sum(bv.exports) AS exports
+	--, sum(bv.total) AS total
+FROM fiscal_calendar fc
+JOIN by_vessel bv ON trunc(bv.atd) = fc.date_in_series
+--GROUP BY fc.fiscal_year, fc.fiscal_month
+ORDER BY fc.fiscal_year, fc.fiscal_month, bv.atd
+;
+SELECT trunc(vv.atd) FROM VESSEL_VISITS vv WHERE vv.vsl_id = 'CSCLYEL' AND vv.IN_VOY_NBR = '047E';
