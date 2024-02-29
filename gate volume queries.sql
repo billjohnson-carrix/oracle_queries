@@ -417,10 +417,10 @@ JOIN sztp_to_len ON sztp_to_len.sztp_id = gt.ctr_sztp_id
 WHERE 
 	(EXTRACT (YEAR FROM gt.created) >= 2018) -- OR EXTRACT (YEAR FROM gt.created) = 2022)
 	--trunc(gt.created)  BETWEEN to_date('2023-01-01', 'YYYY-MM-DD') AND to_date('2023-01-31','YYYY-MM-DD')
-	AND gt.ctr_nbr IS NOT NULL
+	--AND gt.ctr_nbr IS NOT NULL
 	AND gt.tran_status = 'EIR'
-	AND (gt.WTASK_ID = '1FULLOUT' OR gt.WTASK_ID = 'FULLIN'  OR gt.WTASK_ID = 'FULLOUT'
-		 OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB')
+	--AND (gt.WTASK_ID = '1FULLOUT' OR gt.WTASK_ID = 'FULLIN'  OR gt.WTASK_ID = 'FULLOUT'
+		 --OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB')
 GROUP BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ORDER BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ;
@@ -476,4 +476,184 @@ WHERE
 	AND (gt.WTASK_ID = 'RDRAYIN' OR gt.WTASK_ID = 'RFULLIN' OR gt.WTASK_ID = 'RFULLOUT' OR gt.WTASK_ID = 'RMTIN'  OR gt.WTASK_ID = 'RMTOUT')
 GROUP BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ORDER BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
+;
+
+-- Looking at PCT now
+-- List of gate transactions and selected attributes for a time period
+SELECT 
+	--gt.WTASK_ID
+	gt.TRAN_STATUS  
+	, count(*)
+FROM 
+	GATE_TRANSACTIONS gt 
+WHERE 
+	trunc(gt.created) BETWEEN to_date('2023-06-11', 'YYYY-MM-DD') AND to_date('2023-06-17','YYYY-MM-DD')
+	--gt.ctr_nbr IS NOT NULL AND 
+	--gt.tran_status = 'EIR' 
+	--(gt.WTASK_ID = '1FULLOUT' OR gt.WTASK_ID = 'FULLIN'  OR gt.WTASK_ID = 'FULLOUT'
+		-- OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB')
+GROUP BY gt.tran_status
+--GROUP BY gt.WTASK_ID 
+--ORDER BY gt.WTASK_ID 
+;
+
+-- Attempt to automate a bit
+-- It turns out this is unnecessarily complicated and I can drop the tran_status values other than 'EIR'.
+WITH 
+	date_series AS (
+	  SELECT
+	    TO_DATE('2023-05-27', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
+	  FROM dual
+	  CONNECT BY TO_DATE('2023-05-27', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2024-01-26', 'YYYY-MM-DD')
+	), weeks AS (
+		SELECT 
+			trunc(DATE_in_series) AS DAY
+			, ROW_NUMBER() OVER (ORDER BY date_in_series) AS enum
+			, trunc(23 + (ROW_NUMBER() OVER (ORDER BY date_in_series) - 1) / 7) AS PMA_week
+		FROM date_series
+	), by_tran_status AS (
+		SELECT 
+			weeks.PMA_week
+			, TRUNC(MIN(weeks.day)) AS start_day
+			, trunc(max(weeks.day)) AS end_day
+			, COALESCE (CASE WHEN gt.tran_status = 'EIR' THEN count(gt.tran_status) END, 0) AS EIR
+			, COALESCE (CASE WHEN gt.tran_status = 'ERR' THEN count(gt.tran_status) END, 0) AS ERR
+			, COALESCE (CASE WHEN gt.tran_status = 'CNCL' THEN count(gt.tran_status) END, 0) AS CNCL
+			, COALESCE (CASE WHEN gt.tran_status = 'PRE' THEN count(gt.tran_status) END, 0) AS PRE
+		FROM weeks
+		JOIN gate_transactions gt ON trunc(weeks.day) = trunc(gt.created)
+		GROUP BY weeks.PMA_week, gt.tran_status
+		--ORDER BY weeks.pma_week
+	)
+SELECT 
+	bts.pma_week
+	, min(bts.start_day) AS start_day
+	, max(bts.end_day) AS end_day
+	, sum(bts.eir) AS EIR
+	, sum(bts.err) AS ERR
+	, sum(bts.cncl) AS CNCL
+	, sum(bts.pre) AS PRE
+	, sum(bts.eir) + sum(bts.err) - sum(bts.cncl) + sum(bts.pre) AS Volume
+FROM by_tran_status bts
+GROUP BY bts.pma_week
+ORDER BY bts.pma_week
+;
+
+-- Attempt at final query
+WITH 
+	date_series AS (
+	  SELECT
+	    TO_DATE('2023-05-27', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
+	  FROM dual
+	  CONNECT BY TO_DATE('2023-05-27', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2024-01-26', 'YYYY-MM-DD')
+	), weeks AS (
+		SELECT 
+			trunc(DATE_in_series) AS DAY
+			, ROW_NUMBER() OVER (ORDER BY date_in_series) AS enum
+			, trunc(23 + (ROW_NUMBER() OVER (ORDER BY date_in_series) - 1) / 7) AS PMA_week
+		FROM date_series
+	)
+SELECT 
+	weeks.PMA_week
+	, TRUNC(MIN(weeks.day)) AS start_day
+	, trunc(max(weeks.day)) AS end_day
+	, COALESCE (count(gt.tran_status), 0) AS Volume
+FROM weeks
+JOIN gate_transactions gt ON trunc(weeks.day) = trunc(gt.created) AND 
+	--gt.ctr_nbr IS NOT NULL 
+	gt.tran_status = 'EIR'  
+	AND (gt.wtask_id = '1FULLOUT' OR gt.WTASK_ID = 'BOOKOUT' OR gt.WTASK_ID = 'BOOKOUTB'  
+			OR gt.WTASK_ID = 'CHSIN' OR gt.WTASK_ID = 'CHSINB' 
+			OR gt.WTASK_ID = 'FULLIN' OR gt.WTASK_ID = 'FULLINB' OR gt.WTASK_ID = 'FULLINO' OR gt.WTASK_ID = 'FULLOUT' OR gt.WTASK_ID = 'FULLOUTB'
+			OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR GT.WTASK_ID = 'MTINO' OR  gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB'
+			OR gt.WTASK_ID = 'REPOOUT' OR gt.WTASK_ID = 'REPOOUTB'
+			OR GT.WTASK_ID = 'RAILIN' OR GT.WTASK_ID = 'RAILOUT' 
+			OR GT.WTASK_ID = 'RFULLIN' OR GT.WTASK_ID = 'RFULLOUT' 
+			OR GT.WTASK_ID = 'RMTIN' OR GT.WTASK_ID = 'RMTOUT'
+			OR gt.wtask_id = 'TRUCKOUT')
+GROUP BY weeks.PMA_week
+ORDER BY weeks.pma_week
+;
+
+SELECT 
+	gt.WTASK_ID 
+	, count(*)
+FROM gate_transactions gt 
+WHERE 
+	gt.tran_status = 'EIR'  
+	AND trunc(gt.created) BETWEEN TO_DATE('2023-07-08', 'YYYY-MM-DD') and to_date('2024-07-14', 'YYYY-MM-DD')
+GROUP BY gt.WTASK_ID 
+ORDER BY gt.wtask_id
+;
+
+-- Reinvestigating MIT gate counts to see if we can select on just 'EIR'
+--Finally adding TEUs and truck turns to the MIT query
+--First the maingate
+WITH sztp_to_len AS
+	(SELECT 
+		sztp_id, len
+	FROM 
+		(SELECT 
+			t2.sztp_id
+			, t2.len
+			, t2.cnt
+			, ROW_NUMBER() OVER	(PARTITION BY t2.sztp_id ORDER BY t2.cnt DESC) AS rn
+		FROM 
+			(SELECT t1.*, et.name, est.name
+			FROM (
+			    SELECT
+			    	to_number(eq.sztp_eqsz_id) AS len
+			    	, eq.sztp_class
+			    	, eq.sztp_id
+			    	, eq.sztp_eqtp_id
+			    	, count(*) AS cnt
+			    FROM equipment eq
+			    WHERE eq.sztp_class = 'CTR' AND REGEXP_LIKE(eq.SZTP_EQSZ_ID, '^[0-9]+$')
+			    GROUP BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			    --ORDER BY to_number(eq.sztp_eqsz_id), eq.sztp_class, eq.sztp_id, eq.sztp_eqtp_id
+			) t1 
+		JOIN equipment_types et ON t1.sztp_eqtp_id = et.id
+		JOIN EQUIPMENT_SIZE_TYPES est ON t1.sztp_id = est.id
+		WHERE NOT t1.sztp_eqtp_id = 'RT' AND NOT t1.sztp_eqtp_id = 'PP'
+		--ORDER BY t1.sztp_id
+		) t2 )
+	WHERE rn = 1)
+SELECT 
+	gt.wtask_id
+	, count(*)
+FROM
+	GATE_TRANSACTIONS gt 
+JOIN sztp_to_len ON sztp_to_len.sztp_id = gt.ctr_sztp_id
+WHERE 
+	(EXTRACT (YEAR FROM gt.created) = 2022 AND 
+			(EXTRACT (MONTH FROM gt.created) = 1 OR 
+			 EXTRACT (MONTH FROM gt.created) = 2 OR
+			 EXTRACT (MONTH FROM gt.created) = 4 OR
+			 EXTRACT (MONTH FROM gt.created) = 5 OR
+			 EXTRACT (MONTH FROM gt.created) = 6 OR
+			 EXTRACT (MONTH FROM gt.created) = 7 OR
+			 EXTRACT (MONTH FROM gt.created) = 8 OR
+			 EXTRACT (MONTH FROM gt.created) = 9) 
+		OR (EXTRACT (YEAR FROM gt.created) = 2023 AND
+				(EXTRACT (MONTH FROM gt.created) = 1 OR
+				 EXTRACT (MONTH FROM gt.created) = 2 OR
+				 EXTRACT (MONTH FROM gt.created) = 4 OR
+				 EXTRACT (MONTH FROM gt.created) = 5))) 
+	-- OR EXTRACT (YEAR FROM gt.created) = 2022)
+	--trunc(gt.created)  BETWEEN to_date('2023-01-01', 'YYYY-MM-DD') AND to_date('2023-01-31','YYYY-MM-DD')
+	--AND gt.ctr_nbr IS NOT NULL
+	AND gt.tran_status = 'EIR'
+		--AND (gt.wtask_id = '1FULLOUT' OR gt.WTASK_ID = 'BOOKOUT' OR gt.WTASK_ID = 'BOOKOUTB'  
+		--	OR gt.WTASK_ID = 'CHSIN' OR gt.WTASK_ID = 'CHSINB' 
+		--	OR gt.WTASK_ID = 'FULLIN' OR gt.WTASK_ID = 'FULLINB' OR gt.WTASK_ID = 'FULLINO' OR gt.WTASK_ID = 'FULLOUT' OR gt.WTASK_ID = 'FULLOUTB'
+		--	OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR GT.WTASK_ID = 'MTINO' OR  gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB'
+		--	OR gt.WTASK_ID = 'REPOOUT' OR gt.WTASK_ID = 'REPOOUTB'
+		--	OR GT.WTASK_ID = 'RAILIN' OR GT.WTASK_ID = 'RAILOUT' 
+		--	OR GT.WTASK_ID = 'RFULLIN' OR GT.WTASK_ID = 'RFULLOUT' 
+		--	OR GT.WTASK_ID = 'RMTIN' OR GT.WTASK_ID = 'RMTOUT'
+		--	OR gt.wtask_id = 'TRUCKOUT')
+	--AND (gt.WTASK_ID = '1FULLOUT' OR gt.WTASK_ID = 'FULLIN'  OR gt.WTASK_ID = 'FULLOUT'
+		 --OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB')
+GROUP BY gt.wtask_id
+ORDER BY gt.wtask_id
 ;
