@@ -1,0 +1,16 @@
+--All the domains
+SELECT 
+	DISTINCT crc.RV_DOMAIN 
+FROM CG_REF_CODES crc 
+ORDER BY crc.RV_DOMAIN 
+;
+
+--Best for browsing, but a bit long
+SELECT cgrc.RV_DOMAIN, cgrc.RV_LOW_VALUE, cgrc.RV_MEANING, cgrc.RV_HIGH_VALUE, cgrc.RV_ABBREVIATION, cgrc.RV_TYPE, cgrc.ACTIVE 
+FROM cg_ref_codes cgrc
+ORDER BY cgrc.RV_DOMAIN, cgrc.RV_LOW_VALUE;
+
+--Examples
+SELECT * FROM CG_REF_CODES crc WHERE crc.RV_DOMAIN = 'CATEGORY';
+
+SELECT * FROM CG_REF_CODES crc WHERE crc.RV_DOMAIN = 'TERMINAL EVENTS' ORDER BY CRC.RV_LOW_VALUE;
