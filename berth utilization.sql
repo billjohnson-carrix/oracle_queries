@@ -1759,14 +1759,7 @@ ORDER BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
 ;
 
 -- Now let's apply the above queries to ZLO. They use calendar months. We won't need the fiscal calendar.
--- First the utilization by vessel for container vessel berths 1-4.
-SELECT count(*)
-FROM EQUIPMENT_HISTORY eh 
-		WHERE 
-			trunc(eh.posted) BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2023-12-31', 'YYYY-MM-DD')
-			AND eh.vsl_id IS NOT NULL
-			AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
-;
+-- First the utilization by vessel.
 WITH 
 	vessel_calls_almost AS (
 		SELECT
@@ -1805,10 +1798,6 @@ SELECT
 	, round((
 		CASE 
 			WHEN svc.loa = 0 THEN 0
-			WHEN REGEXP_REPLACE(vc.berth, '^T-', '') = 10 THEN 250000
-			WHEN REGEXP_REPLACE(vc.berth, '^T-', '') = 11 THEN 300000
-			WHEN REGEXP_REPLACE(vc.berth, '^T-', '') = 12 THEN 250000
-			WHEN REGEXP_REPLACE(vc.berth, '^T-', '') = 13 THEN 250000
 			ELSE svc.loa
 		END)/1000 * MOD ((vc.departure - vc.arrival),365)) AS "Util m-days"
 FROM vessel_calls vc
@@ -1818,4 +1807,58 @@ LEFT JOIN spinnaker.vc_class svc ON svc.id = spv.CLASS_ID
 ORDER BY vc.departure
 ;
 
-SELECT REGEXP_REPLACE('10', '^T-', '') AS TrimmedString FROM DUAL;
+-- Now the utilization by month.
+WITH 
+	vessel_calls_almost AS (
+		SELECT
+			v.name
+			, vv.vsl_id
+			, vv.in_voy_nbr
+			, vv.out_voy_nbr
+			, vv.berth AS berth
+			, COALESCE (vv.ata, min(eh.posted)) AS Arrival
+			, COALESCE (vv.atd, max(eh.posted)) AS Departure
+		FROM EQUIPMENT_HISTORY eh 
+		JOIN VESSEL_VISITS vv ON eh.VSL_ID = vv.VSL_ID AND (eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		JOIN VESSELS v ON vv.VSL_ID = v.ID 
+		WHERE 
+			trunc(eh.posted) BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2023-12-31', 'YYYY-MM-DD')
+			AND eh.vsl_id IS NOT NULL
+			AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+		GROUP BY v.name, vv.vsl_id, vv.in_voy_nbr, vv.out_voy_nbr, vv.berth, vv.ata, vv.atd
+	), vessel_calls AS (
+		SELECT *
+		FROM vessel_calls_almost vca
+		WHERE vca.departure BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2023-12-31', 'YYYY-MM-DD')
+		ORDER BY vca.departure
+		FETCH FIRST 10000 ROWS ONLY --Needed to overcome cast defect 
+	), by_vessel AS (
+		SELECT
+			msv.name AS Name
+			, vc.vsl_id AS "ID"
+			, vc.IN_VOY_NBR AS "In"
+			, vc.OUT_VOY_NBR AS "Out"
+			, vc.arrival
+			, vc.departure
+			, vc.berth
+			, COALESCE (round(svc.loa/1000),0) AS LENGTH
+			, round(MOD ((vc.departure - vc.arrival),365),1) AS duration
+			, round((
+				CASE 
+					WHEN svc.loa = 0 THEN 0
+					ELSE svc.loa
+				END)/1000 * MOD ((vc.departure - vc.arrival),365)) AS "Util m-days"
+		FROM vessel_calls vc
+		LEFT JOIN mtms.vessels msv ON msv.id = vc.vsl_id
+		LEFT JOIN spinnaker.vessel spv ON spv.code = vc.vsl_id
+		LEFT JOIN spinnaker.vc_class svc ON svc.id = spv.CLASS_ID 
+		ORDER BY vc.departure
+	)
+SELECT 
+	EXTRACT (YEAR FROM bv.departure)
+	, EXTRACT (MONTH FROM bv.departure)
+	, sum (bv."Util m-days")
+FROM by_vessel bv
+GROUP BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
+ORDER BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
+;
