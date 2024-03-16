@@ -3257,7 +3257,7 @@ WITH
 			eh.VSL_ID = vv.VSL_ID AND 
 			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
 		WHERE 
-			EXTRACT (YEAR FROM vv.atd) = 2022 and
+			EXTRACT (YEAR FROM vv.atd) = 2023 AND EXTRACT (MONTH FROM vv.atd) > 9 AND EXTRACT (MONTH FROM vv.atd) <= 12 and
 			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
 			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
 			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
@@ -3318,4 +3318,84 @@ GROUP BY
 	, inv.out_voy_nbr
 	, inv.atd
 ORDER BY inv.atd, inv.vsl_id
+;
+
+--ZLO EH results
+WITH 
+	VESSEL_VISITS_Of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			EXTRACT (YEAR FROM vv.atd) = 2023 AND EXTRACT (MONTH FROM vv.atd) > 5 AND EXTRACT (MONTH FROM vv.atd) <= 8 and
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+--		ORDER BY vv.ATD, vv.VSL_ID 
+	), intervals AS (
+		SELECT
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.ata
+			, vvoi.atd
+			, eh.crane_no
+			, eh.wtask_id
+			, eh.posted
+			, (eh.posted - LAG(eh.posted) OVER (PARTITION BY vvoi.vsl_id, vvoi.in_voy_nbr, vvoi.out_voy_nbr, eh.crane_no ORDER BY eh.posted))*24*60 AS time_interval 
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN EQUIPMENT_HISTORY eh ON
+			eh.vsl_id = vvoi.vsl_id AND 
+			(eh.voy_nbr = vvoi.in_voy_nbr OR
+			 eh.voy_nbr = vvoi.out_voy_nbr)
+		WHERE 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+			, eh.crane_no
+			, eh.posted
+*/	), aggregates AS (
+		SELECT
+			EXTRACT (YEAR FROM inv.atd) AS year
+			, extract(MONTH FROM inv.atd) AS month
+			, count(*) AS moves
+			, sum (
+				CASE 
+					WHEN time_interval > 720 THEN 0
+					ELSE time_interval
+			  	END
+			  ) AS raw_time
+			, sum (
+				CASE 
+					WHEN time_interval > 5.5 THEN 0
+					ELSE time_interval
+			  	END
+			  ) AS net_time
+		FROM intervals inv
+		GROUP BY EXTRACT (YEAR FROM inv.atd), extract(MONTH FROM inv.atd)
+--		ORDER BY EXTRACT (YEAR FROM inv.atd), extract(MONTH FROM inv.atd)
+	)
+SELECT 
+	agg.YEAR
+	, agg.MONTH
+	, agg.moves / agg.raw_time * 60 AS "RAW"
+	, agg.moves / agg.net_time * 60 AS net
+FROM aggregates agg
+ORDER BY agg.YEAR, agg.month
 ;
