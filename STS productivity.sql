@@ -3243,7 +3243,58 @@ ORDER BY vv.atd, stats.vsl_id
 
 --Checking errors on net_hours
 --At ZLO UAT 2 I can't even download a month of data at a time. I won't be viewing the distribution of intervals here.
- 
+
+WITH 
+	VESSEL_VISITS_Of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			EXTRACT (YEAR FROM vv.atd) = 2022 AND EXTRACT (MONTH FROM vv.atd) = 1 AND --EXTRACT (Day FROM vv.atd) = 1 and
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	)
+SELECT
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.ata
+	, vvoi.atd
+	, eh.crane_no
+	, eh.wtask_id
+	, eh.posted
+	, (eh.posted - LAG(eh.posted) OVER (PARTITION BY vvoi.vsl_id, vvoi.in_voy_nbr, vvoi.out_voy_nbr, eh.crane_no ORDER BY eh.posted))*24*60 AS time_interval 
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN EQUIPMENT_HISTORY eh ON
+	eh.vsl_id = vvoi.vsl_id AND 
+	(eh.voy_nbr = vvoi.in_voy_nbr OR
+	 eh.voy_nbr = vvoi.out_voy_nbr)
+WHERE 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+	, eh.crane_no
+	, eh.posted
+
+--Results by vessel
 WITH 
 	VESSEL_VISITS_Of_interest AS (
 		SELECT 
@@ -3398,4 +3449,524 @@ SELECT
 	, agg.moves / agg.net_time * 60 AS net
 FROM aggregates agg
 ORDER BY agg.YEAR, agg.month
+;
+
+--Looking at PCT now
+--Productivities by vessel
+WITH 
+	VESSEL_VISITS_Of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2022-12-31','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	), intervals AS (
+		SELECT
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.ata
+			, vvoi.atd
+			, eh.crane_no
+			, eh.wtask_id
+			, eh.posted
+			, (eh.posted - LAG(eh.posted) OVER (PARTITION BY vvoi.vsl_id, vvoi.in_voy_nbr, vvoi.out_voy_nbr, eh.crane_no ORDER BY eh.posted))*24*60 AS time_interval 
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN EQUIPMENT_HISTORY eh ON
+			eh.vsl_id = vvoi.vsl_id AND 
+			(eh.voy_nbr = vvoi.in_voy_nbr OR
+			 eh.voy_nbr = vvoi.out_voy_nbr)
+		WHERE 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+			, eh.crane_no
+			, eh.posted
+*/	)
+SELECT 
+	inv.vsl_id
+	, inv.in_voy_nbr
+	, inv.out_voy_nbr
+	, inv.ata
+	, inv.atd
+	, count(*) AS moves
+	, sum (
+		CASE 
+			WHEN time_interval > 720 THEN 0
+			ELSE time_interval
+	  	END
+	  ) AS raw_time
+	, sum (
+		CASE 
+			WHEN time_interval > 60 THEN 0
+			ELSE time_interval
+	  	END
+	  ) AS net_time
+FROM intervals inv
+GROUP BY inv.vsl_id, inv.in_voy_nbr, inv.out_voy_nbr, inv.ata, inv.atd
+ORDER BY inv.atd, inv.vsl_id
+;
+
+
+--Productivities by month
+WITH 
+	VESSEL_VISITS_Of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2022-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	), intervals AS (
+		SELECT
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.ata
+			, vvoi.atd
+			, eh.crane_no
+			, eh.wtask_id
+			, eh.posted
+			, (eh.posted - LAG(eh.posted) OVER (PARTITION BY vvoi.vsl_id, vvoi.in_voy_nbr, vvoi.out_voy_nbr, eh.crane_no ORDER BY eh.posted))*24*60 AS time_interval 
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN EQUIPMENT_HISTORY eh ON
+			eh.vsl_id = vvoi.vsl_id AND 
+			(eh.voy_nbr = vvoi.in_voy_nbr OR
+			 eh.voy_nbr = vvoi.out_voy_nbr)
+		WHERE 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+			, eh.crane_no
+			, eh.posted
+*/	), aggregates AS (
+		SELECT
+			EXTRACT (YEAR FROM inv.atd) AS year
+			, extract(MONTH FROM inv.atd) AS month
+			, count(*) AS moves
+			, sum (
+				CASE 
+					WHEN time_interval > 720 THEN 0
+					ELSE time_interval
+			  	END
+			  ) AS raw_time
+			, sum (
+				CASE 
+					WHEN time_interval > 5.5 THEN 0
+					ELSE time_interval
+			  	END
+			  ) AS net_time
+		FROM intervals inv
+		GROUP BY EXTRACT (YEAR FROM inv.atd), extract(MONTH FROM inv.atd)
+		--ORDER BY EXTRACT (YEAR FROM inv.atd), extract(MONTH FROM inv.atd)
+	)
+SELECT 
+	agg.YEAR
+	, agg.MONTH
+	, agg.moves / agg.raw_time * 60 AS "RAW"
+	, agg.moves / agg.net_time * 60 AS net
+FROM aggregates agg
+ORDER BY agg.YEAR, agg.month
+;
+
+/*
+ * At this point I'm abandoning the attempt to derive delays from the equipment_history table.
+ * The threshold that determined a delay for matching the net delays at MIT and ZLO was 5.5 minutes.
+ * For PCT, it is around an hour. I don't want to present that difference, nor do I think that I can 
+ * support its extraordinary claim that at PCT a move that takes less than an hour to complete has
+ * not been delayed. Henceforth, delays will be taken from a source, like the vessel_summary_delays
+ * table or the AS400, and not derived. 
+ * 
+ * I'm switching back to MIT and ZLO to recompute the raw, gross, and net productivities and compare
+ * them to what is reported.
+ */
+
+--Vessel Statistics - Summary by vessel
+SELECT
+	vs.VV_VSL_ID 
+	, sum(vs.QUANTITY )
+	, vv.atd
+FROM vessel_statistics vs
+LEFT JOIN vessel_visits vv ON 
+	vs.VV_VSL_ID = vv.VSL_ID AND 
+	vs.VV_IN_VOY_NBR = vv.IN_VOY_NBR AND 
+	vs.VV_OUT_VOY_NBR = vv.OUT_VOY_NBR 
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	EXTRACT (YEAR FROM vv.atd) = 2023)
+GROUP BY 
+	vs.VV_VSL_ID 
+	, vv.atd
+ORDER BY vv.ATD, vs.vv_VSL_ID 
+;
+
+--EH - Summarized by vessel
+SELECT 
+	vv.VSL_ID 
+	, count(*) AS quantity
+	, vv.atd
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Vessel visits of interest
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Delays from vessel_visits
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.PAID_HOURS 
+	, vv.GROSS_HOURS 
+	, vv.NET_HOURS 
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+	, vv.PAID_HOURS 
+	, vv.GROSS_HOURS 
+	, vv.NET_HOURS 
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Delays from vessel_summary_delays
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	)
+SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS shipping_delays
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'T' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS terminal_delays
+	, sum (
+		CASE 
+			WHEN vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS total_delays
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_summary_detail vsd ON
+	vsd.vsl_id = vvoi.vsl_id AND 
+	vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+	vsd.voy_out_nbr = vvoi.out_voy_nbr
+LEFT JOIN vessel_summary_delays vsy ON
+	vsy.vsd_gkey = vsd.gkey
+LEFT JOIN delay_reasons dr ON
+	dr.code = vsy.delay_code
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;
+
+--Raw times from EH
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, eh.CRANE_NO 
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	)
+SELECT 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, sum(cwt.crane_work_hours) AS work_hours
+FROM crane_work_times cwt 
+GROUP BY 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, cwt.atd
+ORDER BY cwt.atd, cwt.vsl_id
+;
+
+--Productivities by vessel
+--I will only compute three productivities. They will all use EH. Raw will use the work_hours computed from EH. Gross and Net will use
+--gross_hours and net_hours from vessel_visits.
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, vv.gross_hours
+			, vv.net_hours
+			, eh.CRANE_NO 
+			, count(eh.posted) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, vv.gross_hours
+			, vv.net_hours
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	)
+SELECT 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, sum(cwt.moves) AS moves
+	, sum(cwt.crane_work_hours) AS work_hours
+	, cwt.gross_hours
+	, cwt.net_hours
+	, CASE WHEN sum(cwt.crane_work_hours) = 0 THEN NULL ELSE sum(cwt.moves) / sum(cwt.crane_work_hours) END AS "RAW"
+	, CASE WHEN cwt.gross_hours = 0 THEN NULL ELSE sum(cwt.moves) / cwt.gross_hours END AS gross
+	, CASE WHEN cwt.net_hours = 0 THEN NULL ELSE sum(cwt.moves) / cwt.net_hours END AS net
+FROM crane_work_times cwt 
+GROUP BY 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, cwt.atd
+	, cwt.gross_hours
+	, cwt.net_hours
+ORDER BY cwt.atd, cwt.vsl_id
+;
+
+--Productivities by month
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, vv.gross_hours
+			, vv.net_hours
+			, eh.CRANE_NO 
+			, count(eh.posted) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, vv.gross_hours
+			, vv.net_hours
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	), group_by_vessel AS (
+		SELECT 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+			, sum(cwt.moves) AS moves
+			, sum(cwt.crane_work_hours) AS work_hours
+			, cwt.gross_hours
+			, cwt.net_hours
+			, CASE WHEN sum(cwt.crane_work_hours) = 0 THEN NULL ELSE sum(cwt.moves) / sum(cwt.crane_work_hours) END AS "RAW"
+			, CASE WHEN cwt.gross_hours = 0 THEN NULL ELSE sum(cwt.moves) / cwt.gross_hours END AS gross
+			, CASE WHEN cwt.net_hours = 0 THEN NULL ELSE sum(cwt.moves) / cwt.net_hours END AS net
+		FROM crane_work_times cwt 
+		GROUP BY 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+			, cwt.gross_hours
+			, cwt.net_hours
+		--ORDER BY cwt.atd, cwt.vsl_id
+	)
+SELECT 
+	EXTRACT (YEAR FROM gbv.atd) AS year
+	, EXTRACT (MONTH FROM gbv.atd) AS month
+	, sum(gbv.moves) AS moves
+	, sum(gbv.work_hours) AS work_hours
+	, sum(gbv.gross_hours) AS gross_hours
+	, sum(gbv.net_hours) AS net_hours
+	, CASE WHEN sum(gbv.work_hours) = 0 THEN NULL ELSE sum(gbv.moves) / sum(gbv.work_hours) END AS "RAW"
+	, CASE WHEN sum(gbv.gross_hours) = 0 THEN NULL ELSE sum(gbv.moves) / sum(gbv.gross_hours) END AS gross
+	, CASE WHEN sum(gbv.net_hours) = 0 THEN NULL ELSE sum(gbv.moves) / sum(gbv.net_hours) END AS net
+FROM group_by_vessel gbv
+GROUP BY
+	EXTRACT (YEAR FROM gbv.atd)
+	, EXTRACT (MONTH FROM gbv.atd)
+ORDER BY 
+	EXTRACT (YEAR FROM gbv.atd)
+	, EXTRACT (MONTH FROM gbv.atd)
 ;
