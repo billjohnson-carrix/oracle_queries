@@ -4433,7 +4433,8 @@ WITH
 			, mbvc.out_voy_nbr
 			, mbvc.crane_id
 			, mbvc.vsd_moves
-			, sum(vscp.completed - vscp.commenced) AS vsd_work_time
+			, sum(vscp.completed - vscp.commenced) * 24 AS vsd_work_days
+			, mbvc.atd
 		FROM vsd_moves_by_vessel_and_crane mbvc 
 		LEFT JOIN vessel_summary_crane_prod vscp ON
 			vscp.vsd_gkey = mbvc.gkey AND 
@@ -4448,16 +4449,32 @@ WITH
 /*		ORDER BY 
 			mbvc.atd
 			, mbvc.vsl_id
-*/	)
---Now I need to sum the work and time by vessel and get those columns into the final query.
-
-
-/*SELECT 
+*/	), vsd_mvs_time_by_vessel AS (
+		SELECT 
+			mtbc.vsl_id
+			, mtbc.in_voy_nbr
+			, mtbc.out_voy_nbr
+			, mtbc.atd
+			, sum(mtbc.vsd_moves) AS vsd_moves
+			, sum(mtbc.vsd_work_days) AS vsd_work_days
+		FROM vsd_mvs_time_by_crane mtbc
+		GROUP BY 
+			mtbc.vsl_id
+			, mtbc.in_voy_nbr
+			, mtbc.out_voy_nbr
+			, mtbc.atd
+		ORDER BY 
+			mtbc.atd
+			, mtbc.vsl_id
+	)
+SELECT 
 	vvoi.vsl_id
 	, vvoi.in_voy_nbr
 	, vvoi.out_voy_nbr
-	, vvoi.moves
-	, vvoi.work_hours
+	, vvoi.moves AS eh_moves
+	, vvoi.work_hours AS eh_work_days
+	, mtbv.vsd_moves AS vsd_moves
+	, mtbv.vsd_work_days AS vsd_work_days
 	, sum (
 		CASE 
 			WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
@@ -4491,17 +4508,23 @@ LEFT JOIN vessel_summary_delays vsy ON
 	vsy.vsd_gkey = vsd.gkey
 LEFT JOIN delay_reasons dr ON
 	dr.code = vsy.delay_code
+LEFT JOIN vsd_mvs_time_by_vessel mtbv ON
+	vvoi.vsl_id = mtbv.vsl_id AND
+	vvoi.in_voy_nbr = mtbv.in_voy_nbr AND
+	vvoi.out_voy_nbr = mtbv.out_voy_nbr
 GROUP BY 
 	vvoi.vsl_id
 	, vvoi.in_voy_nbr
 	, vvoi.out_voy_nbr
 	, vvoi.moves
 	, vvoi.work_hours
+	, mtbv.vsd_moves
+	, mtbv.vsd_work_days
 	, vvoi.atd
 ORDER BY 
 	vvoi.atd
 	, vvoi.vsl_id
-;*/
+;
 
 --Productivity components by month
 WITH 
@@ -4550,13 +4573,81 @@ WITH
 			, cwt.out_voy_nbr
 			, cwt.atd
 		--ORDER BY cwt.atd, cwt.vsl_id
-	), prod_comps_by_vessel AS (
+	), vsd_moves_by_vessel_and_crane AS (
 		SELECT 
 			vvoi.vsl_id
 			, vvoi.in_voy_nbr
 			, vvoi.out_voy_nbr
-			, vvoi.moves
-			, vvoi.work_hours
+			, vsc.crane_id
+			, sum(vsc.total_moves) AS vsd_moves
+			, vsd.gkey
+			, vvoi.atd
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN vessel_summary_detail vsd ON
+			vsd.vsl_id = vvoi.vsl_id AND 
+			vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+			vsd.voy_out_nbr = vvoi.out_voy_nbr
+		LEFT JOIN vessel_summary_cranes vsc ON 
+			vsd.gkey = vsc.vsd_gkey
+		GROUP BY 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.atd
+			, vsd.gkey
+			, vsc.crane_id
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+*/	), vsd_mvs_time_by_crane AS (
+		SELECT 
+			mbvc.vsl_id
+			, mbvc.in_voy_nbr
+			, mbvc.out_voy_nbr
+			, mbvc.crane_id
+			, mbvc.vsd_moves
+			, sum(vscp.completed - vscp.commenced) * 24 AS vsd_work_days
+			, mbvc.atd
+		FROM vsd_moves_by_vessel_and_crane mbvc 
+		LEFT JOIN vessel_summary_crane_prod vscp ON
+			vscp.vsd_gkey = mbvc.gkey AND 
+			vscp.crane_id = mbvc.crane_id
+		GROUP BY 
+			mbvc.vsl_id
+			, mbvc.in_voy_nbr
+			, mbvc.out_voy_nbr
+			, mbvc.crane_id
+			, mbvc.vsd_moves
+			, mbvc.atd
+/*		ORDER BY 
+			mbvc.atd
+			, mbvc.vsl_id
+*/	), vsd_mvs_time_by_vessel AS (
+		SELECT 
+			mtbc.vsl_id
+			, mtbc.in_voy_nbr
+			, mtbc.out_voy_nbr
+			, mtbc.atd
+			, sum(mtbc.vsd_moves) AS vsd_moves
+			, sum(mtbc.vsd_work_days) AS vsd_work_days
+		FROM vsd_mvs_time_by_crane mtbc
+		GROUP BY 
+			mtbc.vsl_id
+			, mtbc.in_voy_nbr
+			, mtbc.out_voy_nbr
+			, mtbc.atd
+/*		ORDER BY 
+			mtbc.atd
+			, mtbc.vsl_id
+*/	), components_by_vessel AS (
+		SELECT 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.moves AS eh_moves
+			, vvoi.work_hours AS eh_work_days
+			, mtbv.vsd_moves AS vsd_moves
+			, mtbv.vsd_work_days AS vsd_work_days
 			, sum (
 				CASE 
 					WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
@@ -4581,6 +4672,7 @@ WITH
 						to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
 					ELSE 0
 				END) AS total_delays
+			, vvoi.atd
 		FROM vessel_visits_of_interest vvoi
 		LEFT JOIN vessel_summary_detail vsd ON
 			vsd.vsl_id = vvoi.vsl_id AND 
@@ -4590,32 +4682,40 @@ WITH
 			vsy.vsd_gkey = vsd.gkey
 		LEFT JOIN delay_reasons dr ON
 			dr.code = vsy.delay_code
+		LEFT JOIN vsd_mvs_time_by_vessel mtbv ON
+			vvoi.vsl_id = mtbv.vsl_id AND
+			vvoi.in_voy_nbr = mtbv.in_voy_nbr AND
+			vvoi.out_voy_nbr = mtbv.out_voy_nbr
 		GROUP BY 
 			vvoi.vsl_id
 			, vvoi.in_voy_nbr
 			, vvoi.out_voy_nbr
 			, vvoi.moves
 			, vvoi.work_hours
+			, mtbv.vsd_moves
+			, mtbv.vsd_work_days
 			, vvoi.atd
-/*		ORDER BY 
+		/*ORDER BY 
 			vvoi.atd
 			, vvoi.vsl_id
 */	)
 SELECT  
-	EXTRACT (YEAR FROM pcbv.atd) AS year
-	, EXTRACT (MONTH FROM pcbv.atd) AS MONTH
-	, sum(pcbv.moves) AS moves
-	, sum(pcbv.work_hours) AS work_hours
-	, sum(pcbv.shipping_delays) AS shipping_delays
-	, sum(pcbv.terminal_delays) AS terminal_delays
-	, sum(pcbv.total_delays) AS total_delays
-FROM prod_comps_by_vessel pcbv
+	EXTRACT (YEAR FROM cbv.atd) AS year
+	, EXTRACT (MONTH FROM cbv.atd) AS MONTH
+	, sum(cbv.eh_moves) AS eh_moves
+	, sum(cbv.eh_work_days) AS eh_work_days
+	, sum(cbv.vsd_moves) AS vsd_moves
+	, sum(cbv.vsd_work_days) AS vsd_work_days
+	, sum(cbv.shipping_delays) AS shipping_delays
+	, sum(cbv.terminal_delays) AS terminal_delays
+	, sum(cbv.total_delays) AS total_delays
+FROM components_by_vessel cbv
 GROUP BY 
-	EXTRACT (YEAR FROM pcbv.atd)
-	, EXTRACT (MONTH FROM pcbv.atd)
+	EXTRACT (YEAR FROM cbv.atd)
+	, EXTRACT (MONTH FROM cbv.atd)
 ORDER BY 
-	EXTRACT (YEAR FROM pcbv.atd)
-	, EXTRACT (MONTH FROM pcbv.atd)
+	EXTRACT (YEAR FROM cbv.atd)
+	, EXTRACT (MONTH FROM cbv.atd)
 ;
 
 
