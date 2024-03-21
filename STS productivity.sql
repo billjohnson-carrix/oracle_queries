@@ -3970,3 +3970,652 @@ ORDER BY
 	EXTRACT (YEAR FROM gbv.atd)
 	, EXTRACT (MONTH FROM gbv.atd)
 ;
+
+--Emir's query
+WITH 
+	emir_query AS (
+		select SUBSTR (v.name, 0, 29) as name, vv.vsl_id, vv.in_voy_nbr||'/'||vv.out_voy_nbr voyage, vv.inbound_sailing_direction, vv.outbound_sailing_direction, vv.vsl_line_id, vv.out_srvc_id service, v.category, vv.berth, vv.file_ref, vv.ata, vv.atd, vv.work_started, vv.loaded, vv.discharged,
+		       sum(vs.quantity) moves, ((sum(vs.quantity)) - (nvl(y.rehandle_full_total,0) + nvl(y.rehandle_full_total,0))) as moves_reh, vv.gangs, vv.gross_hours, vv.paid_hours, vv.net_hours, round(((vv.atd - vv.ata) * 24),2) berth_hours, 
+		       case when v.category = 'RORO' then 0 else round((sum(vs.quantity) / vv.gross_hours),2) end as gross_production,
+		       case when v.category = 'RORO' then 0 else round((sum(vs.quantity) / vv.paid_hours),2) end as mit_gross_production,
+		       case when v.category = 'RORO' then 0 else round((sum(vs.quantity) / vv.net_hours),2) end as net_production,
+		       case when v.category = 'RORO' then 0 else round((sum(vs.quantity) / round(((vv.atd - vv.ata) * 24),2)),2) end as berth_production,
+		       case when v.category = 'RORO' then 0 else round(round((sum(vs.quantity) / vv.gross_hours),2) * vv.gangs, 2) end as vsl_moves_hour,
+		       nvl(y.load_full_total,0) as load_full_total,
+		nvl(y.load_Empty_total,0) as load_Empty_total,
+		nvl(y.unload_full_total,0) as unload_full_total,
+		nvl(y.unload_Empty_total,0) as unload_Empty_total,
+		nvl(y.rehandle_empty_total,0) as rehandle_empty_total,
+		nvl(y.rehandle_full_total,0) as rehandle_full_total,
+		nvl(y.unload_chassis_total,0) as unload_chassis_total,
+		nvl(y.load_chassis_total,0) as load_chassis_total,
+		nvl(y.unload_cont_total,0) as unload_cont_total,
+		nvl(y.load_cont_total,0) as load_cont_total,
+		nvl(y.unload_reefer_full_total,0) as unload_reefer_full_total,
+		nvl(y.load_reefer_full_total,0) as load_reefer_full_total
+		from vessel_statistics vs, vessel_visits vv, vessels v, (select x.vv_vsl_id, x.vv_in_voy_nbr, x.vv_out_voy_nbr, 
+		                                                                sum(x.load_full_total) as load_full_total,
+		                                                                sum(x.load_Empty_total) as load_Empty_total,
+		                                                                sum(x.unload_full_total) as unload_full_total,
+		                                                                sum(x.unload_Empty_total) as unload_Empty_total,
+		                                                                sum(x.rehandle_empty_total) as rehandle_empty_total,
+		                                                                sum(x.rehandle_full_total) as rehandle_full_total,
+		                                                                sum(x.unload_chassis_total) as unload_chassis_total,
+		                                                                sum(x.load_chassis_total) as load_chassis_total,
+		                                                                sum(x.unload_cont_total)as unload_cont_total,
+		                                                                sum(x.load_cont_total) as load_cont_total,
+		                                                                sum(x.unload_reefer_full_total) as unload_reefer_full_total,
+		                                                                sum(x.load_reefer_full_total) as load_reefer_full_total
+		                                                          from (select vv.vsl_id as vv_vsl_id, vv.in_voy_nbr as vv_in_voy_nbr, vv.out_voy_nbr as vv_out_voy_nbr,
+		                                                                case
+		                                                                when wtask_id ='LOAD' and status ='F' then sum(vs.quantity) 
+		                                                                end as load_full_total,
+		                                                                case
+		                                                                when wtask_id ='LOAD' and status ='E' then sum(vs.quantity) 
+		                                                                end as load_Empty_total,
+		                                                                case
+		                                                                when wtask_id ='UNLOAD' and status ='F' then sum(vs.quantity) 
+		                                                                end as unload_full_total,
+		                                                                case
+		                                                                when wtask_id ='UNLOAD' and status ='E' then sum(vs.quantity) 
+		                                                                end as unload_Empty_total,
+		                                                                case
+		                                                                when substr(wtask_id,1,2) ='RE' and status ='F' then sum(vs.quantity) 
+		                                                                end as rehandle_full_total,
+		                                                                case
+		                                                                when substr(wtask_id,1,2) ='RE' and status ='E' then sum(vs.quantity) 
+		                                                                end as rehandle_empty_total,
+		                                                                case 
+		                                                                when wtask_id ='UNLOAD' and substr(sztp_id,3,2) in ('CH','EX','FB') then sum(vs.quantity) 
+		                                                                end as unload_chassis_total,
+		                                                                case 
+		                                                                when wtask_id ='LOAD' and substr(sztp_id,3,2) in ('CH','EX','FB') then sum(vs.quantity) 
+		                                                                end as load_chassis_total,
+		                                                                case 
+		                                                                when wtask_id ='UNLOAD' and substr(sztp_id,3,2) not in ('CH','EX','FB','BL','RT') then sum(vs.quantity) 
+		                                                              end as unload_cont_total,
+		                                                              case 
+		                                                              when wtask_id ='LOAD' and substr(sztp_id,3,2) not in ('CH','EX','FB','BL','RT') then sum(vs.quantity) 
+		                                                              end as load_cont_total,
+		                                                               --TOTAL REEFERS
+		                                                                             case
+		                                                                            when wtask_id ='UNLOAD' and substr(sztp_id,3,2) in ('RF','RH','RV','MU') and status ='F' then sum(vs.quantity) 
+		                                                                            end as unload_reefer_full_total,
+		                                                                            case
+		                                                                             when wtask_id ='LOAD' and substr(sztp_id,3,2) in ('RF','RH','RV','MU') and status ='F' then sum(vs.quantity)  
+		                                                                            end as load_reefer_full_total
+		                                                              from vessel_statistics vs, vessel_visits vv
+		                                                              --where atd between ? and ?
+		                                                              WHERE --to_char(atd,'MM/YY') = to_char(sysdate,'MM/YY') and
+																	  to_char(ata, 'YYYY') > '2009'
+																	  and to_char(atd, 'YYYY') < '2040'
+		                                                              and vs.vv_vsl_id(+) = vv.vsl_id
+		                                                              and vs.vv_in_voy_nbr(+) = vv.in_voy_nbr
+		                                                              and vs.vv_out_voy_nbr(+) = vv.out_voy_nbr
+		                                                              group by vv.vsl_id, vv.in_voy_nbr, vv.out_voy_nbr, vs.wtask_id, vs.status,  substr(sztp_id,3,2)) x
+		                                                              group by x.vv_vsl_id, x.vv_in_voy_nbr, x.vv_out_voy_nbr) y
+		where vs.vv_vsl_id(+) = vv.vsl_id
+		and vs.vv_in_voy_nbr(+) = vv.in_voy_nbr
+		and vs.vv_out_voy_nbr(+) = vv.out_voy_nbr
+		and vv.vsl_id = v.id
+		and vv.vsl_id = y.vv_vsl_id
+		and vv.in_voy_nbr = y.vv_in_voy_nbr
+		and vv.out_voy_nbr = y.vv_out_voy_nbr
+		and vv.work_started is not null
+		group by v.name, vv.vsl_id, vv.in_voy_nbr||'/'||vv.out_voy_nbr, vv.inbound_sailing_direction, vv.outbound_sailing_direction, vv.vsl_line_id, vv.out_srvc_id, v.category, vv.berth, vv.file_ref, vv.loaded, vv.discharged, 
+		vv.gangs, vv.gross_hours, vv.paid_hours, vv.net_hours,  y.load_full_total, y.load_Empty_total, y.unload_full_total, y.unload_Empty_total, y.rehandle_empty_total, y.rehandle_full_total, 
+		y.unload_chassis_total, y.load_chassis_total, y.unload_cont_total, y.load_cont_total, y.unload_reefer_full_total, y.load_reefer_full_total, vv.ata, vv.atd, vv.work_started
+		--order by 2
+	)
+SELECT 
+	EXTRACT (YEAR FROM eq.ATd) AS year
+	, EXTRACT (MONTH FROM eq.atd) AS month
+	, sum(eq.moves) AS moves
+	, sum(eq.paid_hours) AS paid_hours
+	, sum(eq.gross_hours) AS gross_hours
+	, sum(eq.net_hours) AS net_hours
+	, CASE WHEN sum(eq.paid_hours) = 0 THEN NULL ELSE sum(eq.moves) / sum(eq.paid_hours) END AS paid
+	, CASE WHEN sum(eq.gross_hours) = 0 THEN NULL ELSE sum(eq.moves) / sum(eq.gross_hours) END AS gross 
+	, CASE WHEN sum(eq.net_hours) = 0 THEN NULL ELSE sum(eq.moves) / sum(eq.net_hours) END AS net 	
+FROM emir_query eq
+WHERE EXTRACT (YEAR FROM eq.atd) = 2022 OR EXTRACT (YEAR FROM eq.atd) = 2023
+GROUP BY 
+	EXTRACT (YEAR FROM eq.atd)
+	, EXTRACT (MONTH FROM eq.atd)
+ORDER BY
+	EXTRACT (YEAR FROM eq.atd)
+	, EXTRACT (MONTH FROM eq.atd)
+;
+
+--Switching to ZLO again
+
+--Vessel Statistics - Summary by vessel
+SELECT
+	vs.VV_VSL_ID 
+	, sum(vs.QUANTITY )
+	, vv.atd
+FROM vessel_statistics vs
+LEFT JOIN vessel_visits vv ON 
+	vs.VV_VSL_ID = vv.VSL_ID AND 
+	vs.VV_IN_VOY_NBR = vv.IN_VOY_NBR AND 
+	vs.VV_OUT_VOY_NBR = vv.OUT_VOY_NBR 
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	EXTRACT (YEAR FROM vv.atd) = 2023)
+GROUP BY 
+	vs.VV_VSL_ID 
+	, vv.atd
+ORDER BY vv.ATD, vs.vv_VSL_ID 
+;
+
+SELECT * FROM vessel_statistics vstat;
+
+--EH - Summarized by vessel
+SELECT 
+	vv.VSL_ID 
+	, count(*) AS quantity
+	, vv.atd
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Vessel visits of interest
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--VSD move counts
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	)
+SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, sum(vsc.total_moves) AS moves
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_summary_detail vsd ON 
+	vvoi.vsl_id = vsd.vsl_id AND 
+	vvoi.in_voy_nbr = vsd.voy_in_nbr AND 
+	vvoi.out_voy_nbr = vsd.voy_out_nbr
+LEFT JOIN vessel_summary_cranes vsc ON
+	vsd.gkey = vsc.vsd_gkey
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;
+
+--Delays from vessel_visits
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.PAID_HOURS 
+	, vv.GROSS_HOURS 
+	, vv.NET_HOURS 
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+	 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+	, vv.PAID_HOURS 
+	, vv.GROSS_HOURS 
+	, vv.NET_HOURS 
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Delays from vessel_summary_delays
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.atd
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID 
+	)
+SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS shipping_delays
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'T' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS terminal_delays
+	, sum (
+		CASE 
+			WHEN vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS total_delays
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_summary_detail vsd ON
+	vsd.vsl_id = vvoi.vsl_id AND 
+	vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+	vsd.voy_out_nbr = vvoi.out_voy_nbr
+LEFT JOIN vessel_summary_delays vsy ON
+	vsy.vsd_gkey = vsd.gkey
+LEFT JOIN delay_reasons dr ON
+	dr.code = vsy.delay_code
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;
+
+--Raw times from EH
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, eh.CRANE_NO 
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	)
+SELECT 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, sum(cwt.crane_work_hours) AS work_hours
+FROM crane_work_times cwt 
+GROUP BY 
+	cwt.vsl_id
+	, cwt.in_voy_nbr
+	, cwt.out_voy_nbr
+	, cwt.atd
+ORDER BY cwt.atd, cwt.vsl_id
+;
+
+--Productivities by vessel
+--I will only compute three productivities. They will all use EH. Raw will use the work_hours computed from EH. Gross and Net will use
+--gross_hours and net_hours from vessel_summary_delays.
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, eh.CRANE_NO 
+			, count(eh.posted) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	), vessel_visits_of_interest AS (
+		SELECT 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+			, sum(cwt.moves) AS moves
+			, sum(cwt.crane_work_hours) AS work_hours
+		FROM crane_work_times cwt 
+		GROUP BY 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+		--ORDER BY cwt.atd, cwt.vsl_id
+	), vsd_moves_by_vessel_and_crane AS (
+		SELECT 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vsc.crane_id
+			, sum(vsc.total_moves) AS vsd_moves
+			, vsd.gkey
+			, vvoi.atd
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN vessel_summary_detail vsd ON
+			vsd.vsl_id = vvoi.vsl_id AND 
+			vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+			vsd.voy_out_nbr = vvoi.out_voy_nbr
+		LEFT JOIN vessel_summary_cranes vsc ON 
+			vsd.gkey = vsc.vsd_gkey
+		GROUP BY 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.atd
+			, vsd.gkey
+			, vsc.crane_id
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+*/	), vsd_mvs_time_by_crane AS (
+		SELECT 
+			mbvc.vsl_id
+			, mbvc.in_voy_nbr
+			, mbvc.out_voy_nbr
+			, mbvc.crane_id
+			, mbvc.vsd_moves
+			, sum(vscp.completed - vscp.commenced) AS vsd_work_time
+		FROM vsd_moves_by_vessel_and_crane mbvc 
+		LEFT JOIN vessel_summary_crane_prod vscp ON
+			vscp.vsd_gkey = mbvc.gkey AND 
+			vscp.crane_id = mbvc.crane_id
+		GROUP BY 
+			mbvc.vsl_id
+			, mbvc.in_voy_nbr
+			, mbvc.out_voy_nbr
+			, mbvc.crane_id
+			, mbvc.vsd_moves
+			, mbvc.atd
+/*		ORDER BY 
+			mbvc.atd
+			, mbvc.vsl_id
+*/	)
+--Now I need to sum the work and time by vessel and get those columns into the final query.
+
+
+/*SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.moves
+	, vvoi.work_hours
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS shipping_delays
+	, sum (
+		CASE 
+			WHEN dr.delay_level = 'T' AND vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS terminal_delays
+	, sum (
+		CASE 
+			WHEN vsy.delay_time IS NOT NULL THEN
+				TO_number (to_char(vsy.delay_time, 'HH24')) +
+				to_number (to_char(vsy.delay_time, 'MI')) /60 +
+				to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+			ELSE 0
+		END) AS total_delays
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_summary_detail vsd ON
+	vsd.vsl_id = vvoi.vsl_id AND 
+	vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+	vsd.voy_out_nbr = vvoi.out_voy_nbr
+LEFT JOIN vessel_summary_delays vsy ON
+	vsy.vsd_gkey = vsd.gkey
+LEFT JOIN delay_reasons dr ON
+	dr.code = vsy.delay_code
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.moves
+	, vvoi.work_hours
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;*/
+
+--Productivity components by month
+WITH 
+	crane_work_times AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.atd
+			, eh.CRANE_NO 
+			, count(eh.posted) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			 EXTRACT (YEAR FROM vv.atd) = 2023) AND 
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.ATD 
+			, eh.CRANE_NO 
+		--ORDER BY vv.ATD, vv.VSL_ID, eh.CRANE_NO
+	), vessel_visits_of_interest AS (
+		SELECT 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+			, sum(cwt.moves) AS moves
+			, sum(cwt.crane_work_hours) AS work_hours
+		FROM crane_work_times cwt 
+		GROUP BY 
+			cwt.vsl_id
+			, cwt.in_voy_nbr
+			, cwt.out_voy_nbr
+			, cwt.atd
+		--ORDER BY cwt.atd, cwt.vsl_id
+	), prod_comps_by_vessel AS (
+		SELECT 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.moves
+			, vvoi.work_hours
+			, sum (
+				CASE 
+					WHEN dr.delay_level = 'S' AND vsy.delay_time IS NOT NULL THEN
+						TO_number (to_char(vsy.delay_time, 'HH24')) +
+						to_number (to_char(vsy.delay_time, 'MI')) /60 +
+						to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+					ELSE 0
+				END) AS shipping_delays
+			, sum (
+				CASE 
+					WHEN dr.delay_level = 'T' AND vsy.delay_time IS NOT NULL THEN
+						TO_number (to_char(vsy.delay_time, 'HH24')) +
+						to_number (to_char(vsy.delay_time, 'MI')) /60 +
+						to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+					ELSE 0
+				END) AS terminal_delays
+			, sum (
+				CASE 
+					WHEN vsy.delay_time IS NOT NULL THEN
+						TO_number (to_char(vsy.delay_time, 'HH24')) +
+						to_number (to_char(vsy.delay_time, 'MI')) /60 +
+						to_number (to_char(vsy.delay_time, 'SS')) / 60 / 60
+					ELSE 0
+				END) AS total_delays
+		FROM vessel_visits_of_interest vvoi
+		LEFT JOIN vessel_summary_detail vsd ON
+			vsd.vsl_id = vvoi.vsl_id AND 
+			vsd.voy_in_nbr = vvoi.in_voy_nbr AND 
+			vsd.voy_out_nbr = vvoi.out_voy_nbr
+		LEFT JOIN vessel_summary_delays vsy ON
+			vsy.vsd_gkey = vsd.gkey
+		LEFT JOIN delay_reasons dr ON
+			dr.code = vsy.delay_code
+		GROUP BY 
+			vvoi.vsl_id
+			, vvoi.in_voy_nbr
+			, vvoi.out_voy_nbr
+			, vvoi.moves
+			, vvoi.work_hours
+			, vvoi.atd
+/*		ORDER BY 
+			vvoi.atd
+			, vvoi.vsl_id
+*/	)
+SELECT  
+	EXTRACT (YEAR FROM pcbv.atd) AS year
+	, EXTRACT (MONTH FROM pcbv.atd) AS MONTH
+	, sum(pcbv.moves) AS moves
+	, sum(pcbv.work_hours) AS work_hours
+	, sum(pcbv.shipping_delays) AS shipping_delays
+	, sum(pcbv.terminal_delays) AS terminal_delays
+	, sum(pcbv.total_delays) AS total_delays
+FROM prod_comps_by_vessel pcbv
+GROUP BY 
+	EXTRACT (YEAR FROM pcbv.atd)
+	, EXTRACT (MONTH FROM pcbv.atd)
+ORDER BY 
+	EXTRACT (YEAR FROM pcbv.atd)
+	, EXTRACT (MONTH FROM pcbv.atd)
+;
+
+
