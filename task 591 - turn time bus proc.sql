@@ -432,3 +432,805 @@ ORDER BY
 	, pv.gkey
 	, pv.jn_datetime
 ;
+
+WITH 
+	previous_values AS (
+		SELECT 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+			, tvjn.jn_oracle_user
+			, tvjn.jn_appln
+			, tvjn.queued
+			, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+			, tvjn.entered
+			, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+			, tvjn.exited
+			, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+			, tvjn.guard_verified
+			, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+		FROM truck_visits_jn tvjn
+		WHERE 
+			NOT (tvjn.jn_operation = 'DEL') AND
+			EXTRACT (YEAR FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) = 2023 AND 
+			EXTRACT (MONTH FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) = 12
+/*		ORDER BY 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+*/	)
+SELECT
+	pv.gkey
+	, pv.jn_datetime
+	, pv.jn_oracle_user
+	, CASE WHEN pv.jn_oracle_user LIKE 'KIT%' THEN 'KIT**' ELSE pv.jn_oracle_user END AS jn_oracle_user_type
+	, CASE WHEN pv.jn_appln LIKE 'GAT___FW' THEN 'GAT***FW' ELSE pv.jn_appln END AS jn_appln_type
+	, pv.queued
+	, pv.previous_queued
+	, pv.entered
+	, pv.previous_entered
+	, pv.exited
+	, pv.previous_exited
+	, pv.guard_verified
+	, pv.previous_g_verified
+	, CASE 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 			 	THEN 'All' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'All but guard_verified'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL				THEN 'All but exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but queued'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and entered'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Queued and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Entered and exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Entered and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Exited and guard_verified' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'Entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Guard_verified' 
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NULL AND pv.previous_g_verified IS NOT NULL				THEN 'Exited and guard_verified destroyed'
+		WHEN pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL AND 
+				pv.exited > pv.previous_exited 												THEN 'Updated exited timestamp'
+	  END AS timestamps_populated
+FROM previous_values pv
+WHERE 
+	(pv.queued IS NOT NULL AND pv.previous_queued IS null) OR 
+	(pv.entered IS NOT NULL AND pv.previous_entered IS null) OR 
+	(pv.exited IS NOT NULL AND pv.previous_exited IS null) OR 
+	(pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS null)
+ORDER BY 
+	13
+	, pv.gkey
+	, pv.jn_datetime
+;
+
+--Now looking at T18
+SELECT * FROM truck_visits_jn FETCH FIRST 20 ROWS ONLY ;
+
+SELECT 
+	tvjn.GKEY 
+	, tvjn.JN_DATETIME 
+	, tvjn.jn_oracle_user
+	, tvjn.jn_appln
+	, tvjn.queued
+	, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+	, tvjn.entered
+	, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+	, tvjn.exited
+	, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+	, tvjn.guard_verified
+	, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+FROM truck_visits_jn tvjn
+WHERE 
+	NOT (tvjn.jn_operation = 'DEL')
+ORDER BY 
+	tvjn.GKEY 
+	, tvjn.JN_DATETIME 
+--FETCH FIRST 20 ROWS ONLY 
+;
+
+WITH 
+	previous_values AS (
+		SELECT 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+			, tvjn.jn_oracle_user
+			, tvjn.jn_appln
+			, tvjn.queued
+			, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+			, tvjn.entered
+			, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+			, tvjn.exited
+			, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+			, tvjn.guard_verified
+			, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+		FROM truck_visits_jn tvjn
+		WHERE 
+			NOT (tvjn.jn_operation = 'DEL') AND
+			EXTRACT (YEAR FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) = 2023 AND 
+			EXTRACT (MONTH FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) >= 7
+/*		ORDER BY 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+*/	)
+SELECT
+	pv.gkey
+	, pv.jn_datetime
+	, pv.jn_oracle_user
+	, CASE WHEN pv.jn_oracle_user LIKE 'KIT%' THEN 'KIT**' ELSE pv.jn_oracle_user END AS jn_oracle_user_type
+	, CASE WHEN pv.jn_appln LIKE 'GAT___FW' THEN 'GAT***FW' ELSE pv.jn_appln END AS jn_appln_type
+	, pv.queued
+	, pv.previous_queued
+	, pv.entered
+	, pv.previous_entered
+	, pv.exited
+	, pv.previous_exited
+	, pv.guard_verified
+	, pv.previous_g_verified
+	, CASE 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 			 	THEN 'All' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'All but guard_verified'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL				THEN 'All but exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but queued'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and entered'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Queued and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Entered and exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Entered and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Exited and guard_verified' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'Entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Guard_verified' 
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NULL AND pv.previous_g_verified IS NOT NULL				THEN 'Exited and guard_verified destroyed'
+	  END AS timestamps_populated
+FROM previous_values pv
+WHERE 
+	(pv.queued IS NOT NULL AND pv.previous_queued IS null) OR 
+	(pv.entered IS NOT NULL AND pv.previous_entered IS null) OR 
+	(pv.exited IS NOT NULL AND pv.previous_exited IS null) OR 
+	(pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS null)
+ORDER BY 
+	13
+	, pv.gkey
+	, pv.jn_datetime
+;
+
+WITH 
+	previous_values AS (
+		SELECT 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+			, tvjn.jn_oracle_user
+			, tvjn.jn_appln
+			, tvjn.queued
+			, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+			, tvjn.entered
+			, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+			, tvjn.exited
+			, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+			, tvjn.guard_verified
+			, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+		FROM truck_visits_jn tvjn
+		WHERE 
+			NOT (tvjn.jn_operation = 'DEL')
+/*		ORDER BY 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+*/	), timestamp_actions AS (
+		SELECT
+			pv.gkey
+			, pv.jn_datetime
+			, pv.jn_oracle_user
+			, CASE WHEN pv.jn_oracle_user LIKE 'KIT%' THEN 'KIT**' ELSE pv.jn_oracle_user END AS jn_oracle_user_type
+			, CASE WHEN pv.jn_appln LIKE 'GAT___FW' THEN 'GAT***FW' ELSE pv.jn_appln END AS jn_appln_type
+			, pv.queued
+			, pv.previous_queued
+			, pv.entered
+			, pv.previous_entered
+			, pv.exited
+			, pv.previous_exited
+			, pv.guard_verified
+			, pv.previous_g_verified
+			, CASE 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 			 	THEN 'All' 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'All but guard_verified'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL				THEN 'All but exited'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but entered'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but queued'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and entered'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and exited'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Queued and guard_verified'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Entered and exited'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Entered and guard_verified'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Exited and guard_verified' 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'Entered'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Exited'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Guard_verified' 
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NULL AND pv.previous_g_verified IS NOT NULL				THEN 'Exited and guard_verified destroyed'
+			  END AS timestamps_populated
+		FROM previous_values pv
+		WHERE 
+			(pv.queued IS NOT NULL AND pv.previous_queued IS null) OR 
+			(pv.entered IS NOT NULL AND pv.previous_entered IS null) OR 
+			(pv.exited IS NOT NULL AND pv.previous_exited IS null) OR 
+			(pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS null)
+/*		ORDER BY 
+			13
+			, pv.gkey
+			, pv.jn_datetime
+*/	)
+SELECT 
+	ta.timestamps_populated
+	, ta.jn_oracle_user_type
+	, ta.jn_appln_type
+	, count(*)	
+FROM timestamp_actions ta
+GROUP BY 
+	ta.timestamps_populated
+	, ta.jn_oracle_user_type
+	, ta.jn_appln_type
+ORDER BY 1, 4 DESC 
+;
+
+--Now looking at Tacoma production
+SELECT * FROM truck_visits_jn FETCH FIRST 20 ROWS ONLY ;
+
+SELECT 
+	tvjn.GKEY 
+	, tvjn.JN_DATETIME 
+	, tvjn.jn_oracle_user
+	, tvjn.jn_appln
+	, tvjn.queued
+	, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+	, tvjn.entered
+	, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+	, tvjn.exited
+	, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+	, tvjn.guard_verified
+	, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+FROM truck_visits_jn tvjn
+WHERE 
+	NOT (tvjn.jn_operation = 'DEL')
+ORDER BY 
+	tvjn.GKEY 
+	, tvjn.JN_DATETIME 
+--FETCH FIRST 20 ROWS ONLY 
+;
+
+WITH 
+	previous_values AS (
+		SELECT 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+			, tvjn.jn_oracle_user
+			, tvjn.jn_appln
+			, tvjn.queued
+			, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+			, tvjn.entered
+			, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+			, tvjn.exited
+			, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+			, tvjn.guard_verified
+			, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+		FROM truck_visits_jn tvjn
+		WHERE 
+			NOT (tvjn.jn_operation = 'DEL') AND
+			EXTRACT (YEAR FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) = 2023 AND 
+			EXTRACT (MONTH FROM COALESCE (tvjn.exited, tvjn.guard_verified, tvjn.entered, tvjn.queued)) >= 7
+/*		ORDER BY 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+*/	)
+SELECT
+	pv.gkey
+	, pv.jn_datetime
+	, pv.jn_oracle_user
+	, CASE WHEN pv.jn_oracle_user LIKE 'KIT%' THEN 'KIT**' ELSE pv.jn_oracle_user END AS jn_oracle_user_type
+	, CASE WHEN pv.jn_appln LIKE 'GAT___FW' THEN 'GAT***FW' ELSE pv.jn_appln END AS jn_appln_type
+	, pv.queued
+	, pv.previous_queued
+	, pv.entered
+	, pv.previous_entered
+	, pv.exited
+	, pv.previous_exited
+	, pv.guard_verified
+	, pv.previous_g_verified
+	, CASE 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 			 	THEN 'All' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'All but guard_verified'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL				THEN 'All but exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but queued'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and entered'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and exited'
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Queued and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Entered and exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Entered and guard_verified'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Exited and guard_verified' 
+		WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'Entered'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+			 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Exited'
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+			 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+			 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Guard_verified' 
+		WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+				OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+			 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+			 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+			 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+			 pv.guard_verified IS NULL AND pv.previous_g_verified IS NOT NULL				THEN 'Exited and guard_verified destroyed'
+	  END AS timestamps_populated
+FROM previous_values pv
+WHERE 
+	(pv.queued IS NOT NULL AND pv.previous_queued IS null) OR 
+	(pv.entered IS NOT NULL AND pv.previous_entered IS null) OR 
+	(pv.exited IS NOT NULL AND pv.previous_exited IS null) OR 
+	(pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS null)
+ORDER BY 
+	13
+	, pv.gkey
+	, pv.jn_datetime
+;
+
+WITH 
+	previous_values AS (
+		SELECT 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+			, tvjn.jn_oracle_user
+			, tvjn.jn_appln
+			, tvjn.queued
+			, lag (tvjn.queued) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_queued
+			, tvjn.entered
+			, lag (tvjn.entered) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_entered
+			, tvjn.exited
+			, lag (tvjn.exited) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_exited
+			, tvjn.guard_verified
+			, lag (tvjn.guard_verified) OVER (PARTITION BY tvjn.gkey ORDER BY tvjn.jn_datetime) AS previous_g_verified
+		FROM truck_visits_jn tvjn
+		WHERE 
+			NOT (tvjn.jn_operation = 'DEL')
+/*		ORDER BY 
+			tvjn.GKEY 
+			, tvjn.JN_DATETIME 
+*/	), timestamp_actions AS (
+		SELECT
+			pv.gkey
+			, pv.jn_datetime
+			, pv.jn_oracle_user
+			, CASE WHEN pv.jn_oracle_user LIKE 'KIT%' THEN 'KIT**' ELSE pv.jn_oracle_user END AS jn_oracle_user_type
+			, CASE WHEN pv.jn_appln LIKE 'GAT___FW' THEN 'GAT***FW' ELSE pv.jn_appln END AS jn_appln_type
+			, pv.queued
+			, pv.previous_queued
+			, pv.entered
+			, pv.previous_entered
+			, pv.exited
+			, pv.previous_exited
+			, pv.guard_verified
+			, pv.previous_g_verified
+			, CASE 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 			 	THEN 'All' 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'All but guard_verified'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL				THEN 'All but exited'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but entered'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'All but queued'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and entered'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued and exited'
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Queued and guard_verified'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Entered and exited'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Entered and guard_verified'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Exited and guard_verified' 
+				WHEN pv.queued IS NOT NULL AND pv.previous_queued IS NULL AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Queued'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 pv.entered IS NOT NULL AND pv.previous_entered IS NULL AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))	THEN 'Entered'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 ((pv.guard_verified IS NULL AND pv.previous_g_verified IS NULL) 
+					 	OR (pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NOT NULL))  THEN 'Exited'
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 ((pv.exited IS NULL AND pv.previous_exited IS NULL) 
+					 	OR (pv.exited IS NOT NULL AND pv.previous_exited IS NOT NULL)) AND 
+					 pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS NULL 				THEN 'Guard_verified' 
+				WHEN ((pv.queued IS NULL AND pv.previous_queued IS NULL) 
+						OR (pv.queued IS NOT NULL AND pv.previous_queued IS NOT NULL)) AND 
+					 ((pv.entered IS NULL AND pv.previous_entered IS NULL) 
+					 	OR (pv.entered IS NOT NULL AND pv.previous_entered IS NOT NULL)) AND 
+					 pv.exited IS NOT NULL AND pv.previous_exited IS NULL AND 
+					 pv.guard_verified IS NULL AND pv.previous_g_verified IS NOT NULL				THEN 'Exited and guard_verified destroyed'
+			  END AS timestamps_populated
+		FROM previous_values pv
+		WHERE 
+			(pv.queued IS NOT NULL AND pv.previous_queued IS null) OR 
+			(pv.entered IS NOT NULL AND pv.previous_entered IS null) OR 
+			(pv.exited IS NOT NULL AND pv.previous_exited IS null) OR 
+			(pv.guard_verified IS NOT NULL AND pv.previous_g_verified IS null)
+/*		ORDER BY 
+			13
+			, pv.gkey
+			, pv.jn_datetime
+*/	)
+SELECT 
+	ta.timestamps_populated
+	, ta.jn_oracle_user_type
+	, ta.jn_appln_type
+	, count(*)	
+FROM timestamp_actions ta
+GROUP BY 
+	ta.timestamps_populated
+	, ta.jn_oracle_user_type
+	, ta.jn_appln_type
+ORDER BY 1, 4 DESC 
+;
