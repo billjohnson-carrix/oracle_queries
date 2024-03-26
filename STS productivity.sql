@@ -4727,7 +4727,31 @@ ORDER BY
  * vessel_statistics or VSD also match what's reported. Then I just need to compute and compare.
 */
 
---Productivities by vessel
+--Vessel visits of interest
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, vv.atd
+FROM VESSEL_VISITS vv
+WHERE 
+	(trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) --2022-02-25 2023-12-29
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+SELECT 
+	*
+FROM EQUIPMENT_HISTORY eh 
+WHERE 
+	eh.VSL_ID = 'BALPEAC'
+	AND (eh.voy_nbr = '2206E' OR eh.VOY_NBR = '2206W' OR eh.voy_nbr = '2206')
+	AND 	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 		eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+;
+
+--Move counts by vessel
 SELECT 
 	vv.VSL_ID 
 	, vv.IN_VOY_NBR 
@@ -4815,3 +4839,324 @@ ORDER BY
 
 --VSD fails too. It has 0 records.
 SELECT * FROM vessel_summary_detail;
+
+--Looking for missing vessel visits.
+--The CSCL South China Sea is missing because it has a null ATD.
+--We should correct for that.
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	vv.vsl_id = 'CSCLSOU' AND 
+	vv.IN_VOY_NBR = '062E'
+;
+
+SELECT 
+	* 
+FROM vessels ves
+WHERE 
+	ves.name LIKE '%SOUTH CHINA SEA%'
+;
+
+--The Ball Peace is missing because its out_voy_nbr in vessel visits is incorrectly entered as '2206' instead of '2206W'.
+--I don't think we should correct for that.
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	vv.vsl_id = 'BALPEAC' 
+	-- AND vv.IN_VOY_NBR = ''
+;
+
+SELECT 
+	* 
+FROM vessels ves
+WHERE 
+	ves.name LIKE '%PEACE%'
+;
+
+--Vessel visits of interest
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, COALESCE (vv.atd, vv.ata) AS atd
+FROM VESSEL_VISITS vv
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) --2022-02-25 2023-12-29
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID 
+;
+
+SELECT * FROM EQUIPMENT_HISTORY eh 
+WHERE 
+	eh.VSL_ID = 'BALPEAC' AND 
+	eh.voy_nbr = '2206E'
+;
+
+--Move counts by vessel
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, COALESCE (vv.atd, vv.ata) AS atd
+	, count(*) AS moves
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+	, eh.vsl_id
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID 
+;
+
+--Next is to see if vessel_statistics of vessel_summary_detail matches the reported move counts. VStats fails.
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, COALESCE (vv.atd, vv.ata) AS atd
+			, count(*) AS moves
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+		WHERE 
+			(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, COALESCE (vv.atd, vv.ata)
+			, eh.vsl_id
+		--ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID 
+	)
+SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, sum(vstats.QUANTITY) AS moves
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_statistics vstats ON
+	vstats.VV_VSL_ID = vvoi.vsl_id AND 
+	vstats.VV_IN_VOY_NBR = vvoi.in_voy_nbr AND 
+	vstats.VV_OUT_VOY_NBR = vvoi.out_voy_nbr
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;
+
+--Computing the raw crane work times
+--I will only compute three productivities. They will all use EH. Raw will use the work_hours computed from EH. 
+--Raw crane work times by vessel and crane
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, COALESCE (vv.atd, vv.ata) AS atd
+	, eh.CRANE_NO 
+	, count(*) AS moves
+	, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+	, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+	, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ATA
+	, vv.atd
+	, eh.CRANE_NO 
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID, eh.CRANE_NO
+;
+
+--Raw crane work times by vessel
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, COALESCE (vv.atd, vv.ata) AS atd
+	, count(*) AS moves
+	, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+	, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+	, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ATA
+	, vv.atd, vv.ata
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID
+;
+
+--Moves, raw crane work times, and raw productivities by vessel
+/*
+ * These crane worktimes are wrong. Summing the crane work times listed by vessel and crane
+ * does not product the crane worktimes listed by vessel.
+ */
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, COALESCE (vv.atd, vv.ata) AS atd
+	, count(*) AS moves
+	, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+	, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+	, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+	, CASE 
+		WHEN greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 = 0
+			THEN NULL 
+		ELSE count(*) / greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) / 24
+	  END AS raw_productivity
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ATA
+	, vv.atd, vv.ata
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID
+;
+
+--Correcting the raw crane work times summarized by vessel
+WITH 
+	by_crane AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.atd, vv.ata) AS atd
+			, eh.CRANE_NO 
+			, count(*) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+		WHERE 
+			(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.atd
+			, eh.CRANE_NO 
+		--ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID, eh.CRANE_NO
+	)
+SELECT 
+	bc.VSL_ID 
+	, bc.IN_VOY_NBR 
+	, bc.OUT_VOY_NBR 
+	, bc.atd
+	, nvl(sum(moves),0) AS moves
+	, sum(crane_work_hours) AS raw_hours
+	, CASE 
+		WHEN sum(crane_work_hours) = 0 THEN NULL
+		ELSE nvl(sum(moves),0) / sum(crane_work_hours)
+	  END AS raw_productivity
+FROM by_crane bc
+GROUP BY 
+	bc.VSL_ID 
+	, bc.IN_VOY_NBR 
+	, bc.OUT_VOY_NBR 
+	, bc.atd
+ORDER BY 
+	bc.atd
+	, bc.vsl_id
+;
+
+--Moves, raw crane work times, and raw productivities by fiscal month
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, COALESCE (vv.atd, vv.ata) AS atd
+	, count(*) AS moves
+	, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+	, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+	, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+	, CASE 
+		WHEN greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 = 0
+			THEN NULL 
+		ELSE count(*) / greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+		GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) / 24
+	  END AS raw_productivity
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+WHERE 
+	(trunc(COALESCE (vv.atd, vv.ata)) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ATA
+	, vv.atd, vv.ata
+ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID
+;
