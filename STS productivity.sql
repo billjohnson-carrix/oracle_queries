@@ -4718,4 +4718,100 @@ ORDER BY
 	, EXTRACT (MONTH FROM cbv.atd)
 ;
 
+-- Switching to PCT
+/*
+ * Switching contexts back to STS. My tasks for each terminal are to find a way that makes sense for listing the vessel visits
+ * that matches what's reported. Then compile moves for those vessel visits that matches what's reported, hopefully that can
+ * be done with the equipment_history (EH) table. Then find a source of delays is possible from vessel_visits or from
+ * vessel_summary_detail (VSD) since that's where MIT and ZLO, respectively, found their delays. Ideally, the move counts from 
+ * vessel_statistics or VSD also match what's reported. Then I just need to compute and compare.
+*/
 
+--Productivities by vessel
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, vv.atd
+	, count(*) AS moves
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--There are insufficient delays in the TOS from the vessel visits table for the period that I have good UAT data.
+SELECT 
+	* 
+FROM vessel_visits vv 
+WHERE 
+	(vv.GROSS_HOURS IS NOT NULL OR 
+	vv.NET_HOURS IS NOT NULL) AND 
+	trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')
+ORDER BY vv.atd;
+
+--And there are not delays in VSD. So, there are no delays in the TOS. It'll be raw productivity only.
+SELECT * FROM vessel_summary_delays;
+
+--Next is to see if vessel_statistics of vessel_summary_detail matches the reported move counts. VStats fails.
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR
+			, vv.ata
+			, vv.atd
+			, count(*) AS moves
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		WHERE 
+			(trunc(vv.atd) BETWEEN to_date('2022-02-25','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND --2022-02-25 2023-12-29
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ata
+			, vv.atd
+		--ORDER BY vv.ATD, vv.VSL_ID
+	)
+SELECT 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, sum(vstats.QUANTITY) AS moves
+FROM vessel_visits_of_interest vvoi
+LEFT JOIN vessel_statistics vstats ON
+	vstats.VV_VSL_ID = vvoi.vsl_id AND 
+	vstats.VV_IN_VOY_NBR = vvoi.in_voy_nbr AND 
+	vstats.VV_OUT_VOY_NBR = vvoi.out_voy_nbr
+GROUP BY 
+	vvoi.vsl_id
+	, vvoi.in_voy_nbr
+	, vvoi.out_voy_nbr
+	, vvoi.atd
+ORDER BY 
+	vvoi.atd
+	, vvoi.vsl_id
+;
+
+--VSD fails too. It has 0 records.
+SELECT * FROM vessel_summary_detail;
