@@ -6143,3 +6143,503 @@ ORDER BY
 	fc.fiscal_year
 	, fc.fiscal_month
 ;
+
+--Finding the NAVARIN 244A
+SELECT * FROM vessel_statistics vstats WHERE vstats.VV_VSL_ID = 'NAVARIN';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'NAVARIN';
+SELECT * FROM vessel_summary_detail vsd;
+--The vessel simply isn't present in vessel_statistics. It should be between MSCAVNI and MSCSHRE
+SELECT 
+	* 
+FROM vessel_statistics vstats 
+WHERE 
+	trunc(vstats.CREATED) BETWEEN to_date('2022-11-01','YYYY-MM-DD') AND to_date('2022-12-31','YYYY-MM-DD')
+ORDER BY 
+	vstats.CREATED 
+;
+
+--Finding the MSCVEGA
+SELECT * FROM vessel_statistics vstats WHERE vstats.VV_VSL_ID = 'MSCVEGA';
+SELECT * FROM vessel_visits vv WHERE vv.VSL_ID = 'MSCVEGA';
+SELECT * FROM vessel_summary_detail vsd;
+--The vessel simply isn't present in vessel_statistics. It should be the last vessel. 
+--I suspect that it just didn't make into whatever data transfer populated the good stretch of data in UAT.
+SELECT 
+	* 
+FROM vessel_statistics vstats 
+WHERE 
+	trunc(vstats.CREATED) BETWEEN to_date('2022-12-01','YYYY-MM-DD') AND to_date('2023-02-28','YYYY-MM-DD')
+ORDER BY 
+	vstats.CREATED 
+;
+
+/*
+ * Switching to TAM
+ */
+
+--No records in VStats or VSD. No delays in VV. I can only compute the EH method then.
+SELECT * FROM vessel_statistics;
+SELECT * FROM vessel_summary_detail;
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	trunc(vv.atd) BETWEEN to_date('2021-01-30','YYYY-MM-DD') AND to_date('2023-04-28','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(vv.PAID_HOURS IS NOT NULL OR vv.GROSS_HOURS IS NOT NULL OR vv.NET_HOURS IS NOT null) AND 
+	NOT(vv.paid_hours=0) AND not(vv.gross_hours=0) AND NOT(vv.NET_HOURS=0)
+;
+	
+--I have a comment up above that states that crane_no isn't populated sufficiently for TAM. Let's check it.
+--The period of good data stretches from 2021-01-30 to 2023-04-28.
+--Only 2% populated with crane_no. I can't compute STS productivities then.
+SELECT 
+	count(*) 
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) AS crane_recs
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) / count(*) * 100 AS percentage
+FROM equipment_history eh 
+WHERE 
+	trunc(eh.posted) BETWEEN to_date('2021-01-30','YYYY-MM-DD') AND to_date('2023-04-28','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+;
+
+/*
+ * Switching to TAM Production
+*/
+
+--No records in VStats or VSD. No delays in VV. I can only compute the EH method then.
+SELECT 
+	* 
+FROM vessel_statistics vstats
+WHERE 
+	trunc(vstats.CREATED) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') --2021-01-30 to 2023-04-28
+;
+
+SELECT * FROM vessel_summary_detail;
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	trunc(vv.atd) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(vv.PAID_HOURS IS NOT NULL OR vv.GROSS_HOURS IS NOT NULL OR vv.NET_HOURS IS NOT null) AND 
+	NOT(vv.paid_hours=0) AND not(vv.gross_hours=0) AND NOT(vv.NET_HOURS=0)
+;
+	
+--Only 2% populated with crane_no. I can't compute STS productivities then.
+SELECT 
+	count(*) 
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) AS crane_recs
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) / count(*) * 100 AS percentage
+FROM equipment_history eh 
+WHERE 
+	trunc(eh.posted) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+;
+
+/*
+ * Switching to C60 Production
+ */
+
+--No records in VStats or VSD. No delays in VV. I can only compute the EH method then.
+SELECT 
+	* 
+FROM vessel_statistics vstats
+WHERE 
+	trunc(vstats.CREATED) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') --2021-01-30 to 2023-04-28
+;
+
+SELECT * FROM vessel_summary_detail;
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	trunc(vv.atd) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(vv.PAID_HOURS IS NOT NULL OR vv.GROSS_HOURS IS NOT NULL OR vv.NET_HOURS IS NOT null) AND 
+	NOT(vv.paid_hours=0) AND not(vv.gross_hours=0) AND NOT(vv.NET_HOURS=0)
+;
+	
+--92% populated with crane_no. EH is possible.
+SELECT 
+	count(*) 
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) AS crane_recs
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) / count(*) * 100 AS percentage
+FROM equipment_history eh 
+WHERE 
+	trunc(eh.posted) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+;
+
+/*
+ * Switching to B63 Production
+ */
+
+--No records in VStats or VSD. No delays in VV. I can only compute the EH method then.
+SELECT 
+	* 
+FROM vessel_statistics vstats
+WHERE 
+	trunc(vstats.CREATED) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') --2021-01-30 to 2023-04-28
+;
+
+SELECT * FROM vessel_summary_detail;
+SELECT 
+	* 
+FROM vessel_visits vv
+WHERE 
+	trunc(vv.atd) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(vv.PAID_HOURS IS NOT NULL OR vv.GROSS_HOURS IS NOT NULL OR vv.NET_HOURS IS NOT null) AND 
+	NOT(vv.paid_hours=0) AND not(vv.gross_hours=0) AND NOT(vv.NET_HOURS=0)
+;
+	
+--92% populated with crane_no. EH is possible.
+SELECT 
+	count(*) 
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) AS crane_recs
+	, sum (
+		CASE 
+			WHEN eh.CRANE_NO IS NOT NULL THEN 1 ELSE 0 
+	 	END ) / count(*) * 100 AS percentage
+FROM equipment_history eh 
+WHERE 
+	trunc(eh.posted) BETWEEN to_date('2023-07-01','YYYY-MM-DD') AND to_date('2023-12-31','YYYY-MM-DD') AND --2021-01-30 to 2023-04-28
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+;
+
+/*
+ *  Switching back to C60 production to compute EH productivity.
+ */
+
+--Vessel visits of interest
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, vv.atd
+FROM VESSEL_VISITS vv
+WHERE 
+	(trunc(vv.atd) BETWEEN to_date('2022-12-31','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD'))
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Move counts by vessel
+SELECT 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR
+	, vv.ata
+	, vv.atd
+	, count(*) AS moves
+FROM VESSEL_VISITS vv
+LEFT JOIN equipment_history eh ON 
+	eh.VSL_ID = vv.VSL_ID AND 
+	(eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+WHERE 
+	(trunc(vv.atd) BETWEEN to_date('2022-12-31','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD')) AND
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR
+	 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+	 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+GROUP BY 
+	vv.VSL_ID 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, vv.ata
+	, vv.atd
+ORDER BY vv.ATD, vv.VSL_ID 
+;
+
+--Computing the raw crane work times
+--Correct raw crane work times summarized by vessel
+WITH 
+	by_crane AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.atd, vv.ata) AS atd
+			, eh.CRANE_NO 
+			, count(*) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+		WHERE 
+			trunc(vv.atd) BETWEEN to_date('2022-12-31','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD') AND
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.atd
+			, eh.CRANE_NO 
+		ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID, eh.CRANE_NO
+	)
+SELECT 
+	bc.VSL_ID 
+	, bc.IN_VOY_NBR 
+	, bc.OUT_VOY_NBR 
+	, bc.atd
+	, nvl(sum(moves),0) AS moves
+	, sum(crane_work_hours) AS raw_hours
+	, CASE 
+		WHEN sum(crane_work_hours) = 0 THEN NULL
+		ELSE nvl(sum(moves),0) / sum(crane_work_hours)
+	  END AS raw_productivity
+FROM by_crane bc
+GROUP BY 
+	bc.VSL_ID 
+	, bc.IN_VOY_NBR 
+	, bc.OUT_VOY_NBR 
+	, bc.atd
+ORDER BY 
+	bc.atd
+	, bc.vsl_id
+;
+
+--Moves, raw crane work times, and raw productivities by fiscal month
+WITH 
+	date_series AS (
+		SELECT
+			TO_DATE('2017-12-30', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
+		FROM dual
+		CONNECT BY TO_DATE('2018-01-01', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2023-12-31', 'YYYY-MM-DD')
+	), fiscal_calendar AS (
+		SELECT
+		  date_in_series,
+		  CASE 
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2017-12-30', 'YYYY-MM-DD') AND to_date('2018-01-26', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2018-12-29', 'YYYY-MM-DD') AND to_date('2019-01-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-12-28', 'YYYY-MM-DD') AND to_date('2020-01-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-01-02', 'YYYY-MM-DD') AND to_date('2021-01-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2022-01-28', 'YYYY-MM-DD')
+				OR date_in_series BETWEEN to_date('2022-12-31', 'YYYY-MM-DD') AND to_date('2023-01-27', 'YYYY-MM-DD')
+			THEN 1
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-01-27', 'YYYY-MM-DD') AND to_date('2018-02-23', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-01-26', 'YYYY-MM-DD') AND to_date('2019-02-22', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-02-01', 'YYYY-MM-DD') AND to_date('2020-02-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-01-30', 'YYYY-MM-DD') AND to_date('2021-02-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-01-29', 'YYYY-MM-DD') AND to_date('2022-02-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-01-28', 'YYYY-MM-DD') AND to_date('2023-02-24', 'YYYY-MM-DD')
+		    THEN 2
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-02-24', 'YYYY-MM-DD') AND to_date('2018-03-30', 'YYYY-MM-DD')
+				OR date_in_series BETWEEN to_date('2019-02-23', 'YYYY-MM-DD') AND to_date('2019-03-29', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2020-02-29', 'YYYY-MM-DD') AND to_date('2020-04-03', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2021-02-27', 'YYYY-MM-DD') AND to_date('2021-04-02', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2022-02-26', 'YYYY-MM-DD') AND to_date('2022-04-01', 'YYYY-MM-DD') 	
+				OR date_in_series BETWEEN to_date('2023-02-25', 'YYYY-MM-DD') AND to_date('2023-03-31', 'YYYY-MM-DD')
+			THEN 3    
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-03-31', 'YYYY-MM-DD') AND to_date('2018-04-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-03-30', 'YYYY-MM-DD') AND to_date('2019-04-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-04-04', 'YYYY-MM-DD') AND to_date('2020-05-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-04-03', 'YYYY-MM-DD') AND to_date('2021-04-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-04-02', 'YYYY-MM-DD') AND to_date('2022-04-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-04-01', 'YYYY-MM-DD') AND to_date('2023-04-28', 'YYYY-MM-DD')
+		    THEN 4    
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-04-28', 'YYYY-MM-DD') AND to_date('2018-05-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-04-27', 'YYYY-MM-DD') AND to_date('2019-05-24', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-05-02', 'YYYY-MM-DD') AND to_date('2020-05-29', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-05-01', 'YYYY-MM-DD') AND to_date('2021-05-28', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-04-30', 'YYYY-MM-DD') AND to_date('2022-05-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-04-29', 'YYYY-MM-DD') AND to_date('2023-05-26', 'YYYY-MM-DD')
+		    THEN 5
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-05-26', 'YYYY-MM-DD') AND to_date('2018-06-29', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2019-05-25', 'YYYY-MM-DD') AND to_date('2019-06-28', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2020-05-30', 'YYYY-MM-DD') AND to_date('2020-07-03', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2021-05-29', 'YYYY-MM-DD') AND to_date('2021-07-02', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2022-05-28', 'YYYY-MM-DD') AND to_date('2022-07-01', 'YYYY-MM-DD') 
+		    	OR date_in_series BETWEEN to_date('2023-05-27', 'YYYY-MM-DD') AND to_date('2023-06-30', 'YYYY-MM-DD')
+		    THEN 6
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-06-30', 'YYYY-MM-DD') AND to_date('2018-07-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-06-29', 'YYYY-MM-DD') AND to_date('2019-07-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-07-04', 'YYYY-MM-DD') AND to_date('2020-07-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-07-03', 'YYYY-MM-DD') AND to_date('2021-07-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-07-02', 'YYYY-MM-DD') AND to_date('2022-07-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-07-01', 'YYYY-MM-DD') AND to_date('2023-07-28', 'YYYY-MM-DD')
+		    THEN 7
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-07-28', 'YYYY-MM-DD') AND to_date('2018-08-24', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-07-27', 'YYYY-MM-DD') AND to_date('2019-08-23', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-08-01', 'YYYY-MM-DD') AND to_date('2020-08-28', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-07-31', 'YYYY-MM-DD') AND to_date('2021-08-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-07-30', 'YYYY-MM-DD') AND to_date('2022-08-26', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-07-29', 'YYYY-MM-DD') AND to_date('2023-08-25', 'YYYY-MM-DD')
+		    THEN 8
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-08-25', 'YYYY-MM-DD') AND to_date('2018-09-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-08-24', 'YYYY-MM-DD') AND to_date('2019-09-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-08-29', 'YYYY-MM-DD') AND to_date('2020-10-02', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-08-28', 'YYYY-MM-DD') AND to_date('2021-10-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-08-27', 'YYYY-MM-DD') AND to_date('2022-09-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-08-26', 'YYYY-MM-DD') AND to_date('2023-09-29', 'YYYY-MM-DD')
+		    THEN 9
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-09-29', 'YYYY-MM-DD') AND to_date('2018-10-26', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-09-28', 'YYYY-MM-DD') AND to_date('2019-10-25', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-10-03', 'YYYY-MM-DD') AND to_date('2020-10-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-10-02', 'YYYY-MM-DD') AND to_date('2021-10-29', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-10-01', 'YYYY-MM-DD') AND to_date('2022-10-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-09-30', 'YYYY-MM-DD') AND to_date('2023-10-27', 'YYYY-MM-DD')
+		    THEN 10
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-10-27', 'YYYY-MM-DD') AND to_date('2018-11-23', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-10-26', 'YYYY-MM-DD') AND to_date('2019-11-22', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2020-10-31', 'YYYY-MM-DD') AND to_date('2020-11-27', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2021-10-30', 'YYYY-MM-DD') AND to_date('2021-11-26', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2022-10-29', 'YYYY-MM-DD') AND to_date('2022-11-25', 'YYYY-MM-DD')    	
+		    	OR date_in_series BETWEEN to_date('2023-10-28', 'YYYY-MM-DD') AND to_date('2023-11-24', 'YYYY-MM-DD')
+		    THEN 11
+		    WHEN 
+		    	date_in_series BETWEEN to_date('2018-11-24', 'YYYY-MM-DD') AND to_date('2018-12-28', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2019-11-23', 'YYYY-MM-DD') AND to_date('2019-12-27', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2020-11-28', 'YYYY-MM-DD') AND to_date('2021-01-01', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2021-11-27', 'YYYY-MM-DD') AND to_date('2021-12-31', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2022-11-26', 'YYYY-MM-DD') AND to_date('2022-12-30', 'YYYY-MM-DD')
+		    	OR date_in_series BETWEEN to_date('2023-11-25', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD')
+		    THEN 12
+		  END AS fiscal_month,
+		  CASE 
+		    WHEN date_in_series BETWEEN to_date('2017-12-30', 'YYYY-MM-DD') AND to_date('2018-12-28', 'YYYY-MM-DD') THEN 2018
+		    WHEN date_in_series BETWEEN to_date('2018-12-29', 'YYYY-MM-DD') AND to_date('2019-12-27', 'YYYY-MM-DD') THEN 2019
+		    WHEN date_in_series BETWEEN to_date('2019-12-28', 'YYYY-MM-DD') AND to_date('2021-01-01', 'YYYY-MM-DD') THEN 2020
+		    WHEN date_in_series BETWEEN to_date('2021-01-02', 'YYYY-MM-DD') AND to_date('2021-12-31', 'YYYY-MM-DD') THEN 2021
+		    WHEN date_in_series BETWEEN to_date('2022-01-01', 'YYYY-MM-DD') AND to_date('2022-12-30', 'YYYY-MM-DD') THEN 2022
+		    WHEN date_in_series BETWEEN to_date('2022-12-31', 'YYYY-MM-DD') AND to_date('2023-12-29', 'YYYY-MM-DD') THEN 2023
+		  END AS fiscal_year
+		FROM date_series
+	), by_crane AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.atd, vv.ata) AS atd
+			, eh.CRANE_NO 
+			, count(*) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+		WHERE 
+			trunc(vv.atd) BETWEEN to_date('2022-12-31','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD') AND --2022-01-01 2023-01-27
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.atd
+			, eh.CRANE_NO 
+		--ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID, eh.CRANE_NO
+	), by_crane AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.atd, vv.ata) AS atd
+			, eh.CRANE_NO 
+			, count(*) AS moves
+			, GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))) AS start_time
+			, LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) AS end_time 
+			, greatest(0,(LEAST(MAX(eh.POSTED),COALESCE(vv.atd,MAX(eh.posted))) - 
+				GREATEST(MIN(eh.posted),COALESCE(vv.ata,MIN(eh.posted))))) * 24 AS crane_work_hours
+		FROM VESSEL_VISITS vv
+		LEFT JOIN equipment_history eh ON 
+			eh.VSL_ID = vv.VSL_ID AND 
+			(eh.VOY_NBR LIKE '%' || vv.IN_VOY_NBR || '%' OR eh.VOY_NBR LIKE '%' || vv.OUT_VOY_NBR || '%')
+		WHERE 
+			trunc(vv.atd) BETWEEN to_date('2022-12-31','YYYY-MM-DD') AND to_date('2023-12-29','YYYY-MM-DD') AND --2022-01-01 2023-01-27
+			(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD' OR 
+			 eh.wtask_id = 'REHCD' OR eh.wtask_id = 'REHCDT' OR 
+			 eh.wtask_id = 'REHDC' OR eh.wtask_id = 'REHDCT')
+		GROUP BY 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.ATA
+			, vv.atd
+			, eh.CRANE_NO 
+		--ORDER BY COALESCE (vv.atd, vv.ata), vv.VSL_ID, eh.CRANE_NO
+	), by_vessel AS (
+		SELECT 
+			bc.VSL_ID 
+			, bc.IN_VOY_NBR 
+			, bc.OUT_VOY_NBR 
+			, bc.atd
+			, nvl(sum(moves),0) AS moves
+			, sum(crane_work_hours) AS raw_hours
+			, CASE 
+				WHEN sum(crane_work_hours) = 0 THEN NULL
+				ELSE nvl(sum(moves),0) / sum(crane_work_hours)
+			  END AS raw_productivity
+		FROM by_crane bc
+		GROUP BY 
+			bc.VSL_ID 
+			, bc.IN_VOY_NBR 
+			, bc.OUT_VOY_NBR 
+			, bc.atd
+/*		ORDER BY 
+			bc.atd
+			, bc.vsl_id
+*/	)
+SELECT
+	fc.fiscal_year
+	, fc.fiscal_month
+	, sum(bv.moves) AS moves
+	, sum(bv.raw_hours) AS raw_hours
+FROM by_vessel bv
+JOIN fiscal_calendar fc ON
+	trunc(bv.atd) = fc.date_in_series
+GROUP BY 
+	fc.fiscal_year
+	, fc.fiscal_month
+ORDER BY 
+	fc.fiscal_year
+	, fc.fiscal_month
+;
