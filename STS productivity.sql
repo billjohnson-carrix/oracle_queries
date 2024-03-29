@@ -6314,7 +6314,7 @@ WHERE
 	NOT(vv.paid_hours=0) AND not(vv.gross_hours=0) AND NOT(vv.NET_HOURS=0)
 ;
 	
---92% populated with crane_no. EH is possible.
+--83% populated with crane_no. EH is possible.
 SELECT 
 	count(*) 
 	, sum (
