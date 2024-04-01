@@ -1862,3 +1862,35 @@ FROM by_vessel bv
 GROUP BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
 ORDER BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
 ;
+
+/*
+ *  Resetting here for MIT. I've received a PBIX file from Emir containing his computation of berth utilization. Emir computes 
+ *  berth utilization as the sum of the berth used (in hour-meters) divided by the available berth hours. The berth used is the 
+ *  berth space used multiplied by the port stay hours. The berth space used is the LOA + 30 for the main berth, LOA + 30 if 
+ *  the LOA is less than 150 m for berths 5 and 8 and otherwise 400 m, and finally 300 m for berth 6 and 250 m for berth 7. The 
+ *  port stay hours is the difference between the ATA and the ATD with precision to the minute and expressed in hours. The 
+ *  available berth hours is the length of all the berths added together (2596 m) multiplied by the number of days in the month, 
+ *  multiplied by the number of hours in a day, which MIT sets to 20.5. I'm going to see if I can replicate his numbers using
+ *  UAT data.
+ */
+
+--Vessel visits of interest
+--Produces the same results as Emir's query for Jan '22.
+SELECT
+	vv.ATA 
+	, vv.ATD
+	, vv.VSL_ID 
+	, vv.BERTH 
+	, vv.IN_VOY_NBR 
+	, vv.OUT_VOY_NBR 
+	, (vv.atd - vv.ata) * 24 AS StayHours
+	, vc.LOA / 1000 AS loa
+FROM vessel_visits vv
+LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
+LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
+WHERE 
+	EXTRACT (YEAR FROM vv.atd) = 2022 AND
+	EXTRACT (MONTH FROM vv.atd) = 1
+ORDER BY 
+	vv.ATD 
+;
