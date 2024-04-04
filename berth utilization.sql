@@ -1880,14 +1880,15 @@ ORDER BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
 WITH 
 	first_columns AS (
 		SELECT
-			vv.ATA 
+			vv.eta
+			, vv.ATA 
 			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
 			, vv.IN_VOY_NBR 
 			, vv.OUT_VOY_NBR 
-			, (COALESCE (vv.atd, vv.etd) - vv.ata) * 24 AS StayHours
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
 			, vc.LOA / 1000 AS loa
 			, CASE 
 				WHEN vv.berth = '1' OR vv.berth = '2' OR vv.berth = '3' OR vv.berth = '4' THEN vc.loa / 1000 + 30
@@ -1900,10 +1901,12 @@ WITH
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
 		WHERE 
-			( 	EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022 AND 
-				EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 7 AND 
+			( 	EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 AND 
+				EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 6 AND 
 				(	vv.atd IS NOT NULL OR 
-					vv.atd IS NULL AND vv.berth IS NOT null)
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
 			)
 --		ORDER BY 
 --			vv.ATD 
@@ -1914,7 +1917,7 @@ SELECT
 FROM first_columns fc
 ORDER BY 
 	fc.vsl_id
-	, 11 desc
+	, 12 desc
 ;
 --Finding the Madrid Express 09E/09W
 SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'MADRID' AND vv.IN_VOY_NBR = '09E';
@@ -1927,6 +1930,28 @@ SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'YERUPAJ' AND vv.IN_VOY_NBR = '
 --Investigating various vessels
 SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'TARAGO' AND vv.IN_VOY_NBR = '013A';
 SELECT * FROM equipment_history eh WHERE eh.vsl_id = 'TARAGO' AND (eh.voy_nbr = '013A' OR eh.voy_nbr = '013F');
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'THEBEN' AND vv.IN_VOY_NBR = '003E';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'WARBEL' AND vv.IN_VOY_NBR = '2028S';
+SELECT * FROM spinnaker.vessel spv WHERE spv.code = 'WARBEL';
+SELECT * FROM spinnaker.VC_CLASS vc WHERE vc.id = '59879151';
+SELECT *
+FROM vessel_statistics vstats WHERE vv_vsl_id = 'WARBEL' AND VV_IN_VOY_NBR = '2028S';
+SELECT * FROM vessels v WHERE v.id = 'DUBAEXP';
+SELECT * FROM spinnaker.vessel v WHERE v.CODE  = 'DUBAEXP';
+SELECT * FROM spinnaker.VC_CLASS vc ;
+SELECT * FROM spinnaker.VV_VESSEL_VISIT vvv ;
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'AKACIA' AND vv.IN_VOY_NBR = '004S';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'AMAROLL' AND vv.IN_VOY_NBR = '1019Y';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'MARMARA' AND vv.IN_VOY_NBR = '87A';
+SELECT * FROM spinnaker.vessel v WHERE v.code = 'MARMARA';
+SELECT * FROM spinnaker.VC_CLASS vc WHERE vc.id = '54729261';
+SELECT * FROM vessel_visits vv WHERE vv.VSL_ID = 'TOSC';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'TONBERG' AND vv.IN_VOY_NBR = '005E';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'SALOME' AND vv.IN_VOY_NBR = '302X';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'THEBEN' AND vv.IN_VOY_NBR = '305E';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'AKACIA' AND vv.IN_VOY_NBR = '015S';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'CHIMERC' AND vv.IN_VOY_NBR = '005W';
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'CRYST' AND vv.IN_VOY_NBR = '012S';
 
 --Berth occupancy by berth
 --Needs to be updated with the improvements to VVOI
@@ -2122,14 +2147,15 @@ WITH
 	  SELECT 12, 31 FROM dual
 	), first_columns AS (
 		SELECT
-			vv.ATA 
+			vv.eta
+			, vv.ATA 
 			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
 			, vv.IN_VOY_NBR 
 			, vv.OUT_VOY_NBR 
-			, (vv.atd - vv.ata) * 24 AS StayHours
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
 			, vc.LOA / 1000 AS loa
 			, CASE 
 				WHEN vv.berth = '1' OR vv.berth = '2' OR vv.berth = '3' OR vv.berth = '4' THEN vc.loa / 1000 + 30
@@ -2142,10 +2168,12 @@ WITH
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
 		WHERE 
-			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022 OR  
-				EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023) AND 
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
 				(	vv.atd IS NOT NULL OR 
-					vv.atd IS NULL AND vv.berth IS NOT null)
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
 			)
 --		ORDER BY 
 --			vv.ATD 
@@ -2183,33 +2211,47 @@ ORDER BY
 WITH 
 	first_columns AS (
 		SELECT
-			vv.ATA 
+			vv.eta
+			, vv.ATA 
+			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
 			, vv.IN_VOY_NBR 
 			, vv.OUT_VOY_NBR 
-			, (vv.atd - vv.ata) * 24 AS StayHours
+			, CASE 
+				WHEN vv.berth = '10' THEN '1'
+				WHEN vv.berth = '11' THEN '1'
+				WHEN vv.berth = '12' THEN '2'
+				WHEN vv.berth = '2' THEN '2'
+				WHEN vv.berth = '13' THEN '3'
+			  END AS berth_name
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
 			, vc.LOA / 1000 AS loa
-			, vc.loa / 1000 + 0 AS berth_space_used
 		FROM vessel_visits vv
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
 		WHERE 
-			EXTRACT (YEAR FROM vv.atd) = 2022 AND
-			EXTRACT (MONTH FROM vv.atd) = 1
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			)
 --		ORDER BY 
 --			vv.ATD 
 	)
 SELECT 
 	fc.*
-	, fc.stayhours * fc.berth_space_used AS berth_used
+	, fc.stayhours * fc.loa AS berth_used
 FROM first_columns fc
 ORDER BY 
 	fc.atd
 ;
 
 --Berth occupancy by berth, all months
+--Needs to be updated with the improved vvoi in first_columns
 SELECT DISTINCT vv.berth FROM vessel_visits vv WHERE EXTRACT (YEAR FROM vv.atd) = 2022 AND EXTRACT (MONTH FROM vv.atd) = 1;
 WITH 
 	days_in_month AS (
@@ -2303,7 +2345,9 @@ WITH
 	  SELECT 12, 31 FROM dual
 	), first_columns AS (
 		SELECT
-			vv.ATA 
+			vv.eta
+			, vv.ATA 
+			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
@@ -2316,25 +2360,28 @@ WITH
 				WHEN vv.berth = '2' THEN '2'
 				WHEN vv.berth = '13' THEN '3'
 			  END AS berth_name
-			, (vv.atd - vv.ata) * 24 AS StayHours
-			, vc.LOA / 1000 AS loa
-			, vc.loa / 1000 + 0 AS berth_space_used
-			, 1350 / 3 AS berth_size
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
+			, vc.LOA / 1000 + 30 AS loa
 		FROM vessel_visits vv
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
 		WHERE 
-			EXTRACT (YEAR FROM vv.atd) = 2022 OR 
-			EXTRACT (YEAR FROM vv.atd) = 2023
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			)
 --		ORDER BY 
 --			vv.ATD 
 	), berth_used AS (
 		SELECT 
 			fc.*
-			, fc.stayhours * fc.berth_space_used AS berth_used
+			, fc.stayhours * fc.loa AS berth_used
 		FROM first_columns fc
-		ORDER BY 
-			fc.atd
+--		ORDER BY 
+--			fc.atd
 )
 SELECT 
 	EXTRACT (YEAR FROM bu.atd) AS year
