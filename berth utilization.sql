@@ -1876,16 +1876,18 @@ ORDER BY EXTRACT (YEAR FROM bv.departure), EXTRACT (MONTH FROM bv.departure)
 
 --Vessel visits of interest
 --Produces the same results as Emir's query for Jan '22.
+-- But it misses some with null ATDs in other months.
 WITH 
 	first_columns AS (
 		SELECT
 			vv.ATA 
+			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
 			, vv.IN_VOY_NBR 
 			, vv.OUT_VOY_NBR 
-			, (vv.atd - vv.ata) * 24 AS StayHours
+			, (COALESCE (vv.atd, vv.etd) - vv.ata) * 24 AS StayHours
 			, vc.LOA / 1000 AS loa
 			, CASE 
 				WHEN vv.berth = '1' OR vv.berth = '2' OR vv.berth = '3' OR vv.berth = '4' THEN vc.loa / 1000 + 30
@@ -1898,8 +1900,11 @@ WITH
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
 		WHERE 
-			EXTRACT (YEAR FROM vv.atd) = 2022 AND
-			EXTRACT (MONTH FROM vv.atd) = 1
+			( 	EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022 AND 
+				EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 7 AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null)
+			)
 --		ORDER BY 
 --			vv.ATD 
 	)
@@ -1908,10 +1913,23 @@ SELECT
 	, fc.stayhours * fc.berth_space_used AS berth_used
 FROM first_columns fc
 ORDER BY 
-	fc.atd
+	fc.vsl_id
+	, 11 desc
 ;
+--Finding the Madrid Express 09E/09W
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'MADRID' AND vv.IN_VOY_NBR = '09E';
+--Finding the As Angelina 212N/212S
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'ANGELIN' AND vv.IN_VOY_NBR = '212N';
+--Finding the Green Dawn 002W/002E
+SELECT * FROM vessel_visits vv WHERE vv.IN_VOY_NBR = '002W' AND EXTRACT (MONTH FROM vv.atd) IS null;
+--Finding the Yerupaj
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'YERUPAJ' AND vv.IN_VOY_NBR = '2204S';
+--Investigating various vessels
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'TARAGO' AND vv.IN_VOY_NBR = '013A';
+SELECT * FROM equipment_history eh WHERE eh.vsl_id = 'TARAGO' AND (eh.voy_nbr = '013A' OR eh.voy_nbr = '013F');
 
 --Berth occupancy by berth
+--Needs to be updated with the improvements to VVOI
 SELECT DISTINCT vv.berth FROM vessel_visits vv WHERE EXTRACT (YEAR FROM vv.atd) = 2022 AND EXTRACT (MONTH FROM vv.atd) = 1;
 WITH 
 	days_in_month AS (
@@ -1984,7 +2002,7 @@ SELECT
 	, sum(bu.berth_used) AS berth_used
 	, avg(bu.berth_size) * dim.days * 20.5 AS available_berth_hours
 	, CASE 
-		WHEN NOT (bu.berth_size = 0) THEN sum(bu.berth_used) / avg(bu.berth_size) / 31 / 20.5 * 100 ELSE NULL 
+		WHEN NOT (bu.berth_size = 0) THEN sum(bu.berth_used) / avg(bu.berth_size) / dim.days / 20.5 * 100 ELSE NULL 
 	  END AS berth_utilization
 FROM berth_used bu
 JOIN days_in_month dim ON EXTRACT (MONTH FROM bu.atd) = dim.mnth
@@ -1995,6 +2013,7 @@ GROUP BY
 ;
 
 --Berth occupancy by berth, all months
+--Needs to be updated with the improved VVOI
 SELECT DISTINCT vv.berth FROM vessel_visits vv WHERE EXTRACT (YEAR FROM vv.atd) = 2022 AND EXTRACT (MONTH FROM vv.atd) = 1;
 WITH 
 	days_in_month AS (
@@ -2060,7 +2079,7 @@ WITH
 			fc.atd
 )
 SELECT 
-	EXTRACT (YEAR FROM bu.atd)
+	EXTRACT (YEAR FROM bu.atd) AS YEAR	
 	, dim.mnth
 	, bu.berth_name
 	, count(*) AS Calls
@@ -2069,7 +2088,7 @@ SELECT
 	, sum(bu.berth_used) AS berth_used
 	, avg(bu.berth_size) * dim.days * 20.5 AS available_berth_hours
 	, CASE 
-		WHEN NOT (bu.berth_size = 0) THEN sum(bu.berth_used) / avg(bu.berth_size) / 31 / 20.5 * 100 ELSE NULL 
+		WHEN NOT (bu.berth_size = 0) THEN sum(bu.berth_used) / avg(bu.berth_size) / dim.days / 20.5 * 100 ELSE NULL 
 	  END AS berth_utilization
 FROM berth_used bu
 JOIN days_in_month dim ON EXTRACT (MONTH FROM bu.atd) = dim.mnth
@@ -2104,6 +2123,7 @@ WITH
 	), first_columns AS (
 		SELECT
 			vv.ATA 
+			, vv.etd
 			, vv.ATD
 			, vv.VSL_ID 
 			, vv.BERTH 
@@ -2118,22 +2138,112 @@ WITH
 				WHEN (vv.berth = '5' OR vv.berth = '8') AND vc.loa / 1000 < 150 THEN vc.loa / 1000 + 30
 				ELSE 400
 			  END AS berth_space_used
+		FROM vessel_visits vv
+		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
+		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
+		WHERE 
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022 OR  
+				EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null)
+			)
+--		ORDER BY 
+--			vv.ATD 
+	), berth_used AS (
+		SELECT 
+			fc.*
+			, fc.stayhours * fc.berth_space_used AS berth_used
+		FROM first_columns fc
+--		ORDER BY 
+--			fc.vsl_id
+--			, 11 desc
+	)
+SELECT 
+	EXTRACT (YEAR FROM COALESCE (bu.atd, bu.etd)) AS year
+	, dim.mnth
+	, count(*) AS Calls
+	, sum(bu.berth_used) AS berth_used
+	, (1246 + 400 + 250 + 300 + 400) * dim.days * 20.5 AS available_berth_hours
+	, sum(bu.berth_used) / (1246 + 400 + 250 + 300 + 400) / dim.days / 20.5 * 100 AS berth_util
+FROM berth_used bu
+JOIN days_in_month dim ON EXTRACT (MONTH FROM COALESCE (bu.atd, bu.etd)) = dim.mnth
+GROUP BY 
+	EXTRACT (YEAR FROM COALESCE (bu.atd, bu.etd))
+	, dim.mnth
+	, dim.days
+ORDER BY 
+	EXTRACT (YEAR FROM COALESCE (bu.atd, bu.etd))
+	, dim.mnth
+;
+
+--Switching to ZLO
+--Vessel visits of interest
+--Vessel visits of interest
+--Produces the same results as Emir's query for Jan '22.
+WITH 
+	first_columns AS (
+		SELECT
+			vv.ATA 
+			, vv.ATD
+			, vv.VSL_ID 
+			, vv.BERTH 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, (vv.atd - vv.ata) * 24 AS StayHours
+			, vc.LOA / 1000 AS loa
+			, vc.loa / 1000 + 0 AS berth_space_used
+		FROM vessel_visits vv
+		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
+		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
+		WHERE 
+			EXTRACT (YEAR FROM vv.atd) = 2022 AND
+			EXTRACT (MONTH FROM vv.atd) = 1
+--		ORDER BY 
+--			vv.ATD 
+	)
+SELECT 
+	fc.*
+	, fc.stayhours * fc.berth_space_used AS berth_used
+FROM first_columns fc
+ORDER BY 
+	fc.atd
+;
+
+--Berth occupancy by berth, all months
+SELECT DISTINCT vv.berth FROM vessel_visits vv WHERE EXTRACT (YEAR FROM vv.atd) = 2022 AND EXTRACT (MONTH FROM vv.atd) = 1;
+WITH 
+	days_in_month AS (
+	  SELECT 1 AS mnth, 31 AS days FROM dual UNION ALL
+	  SELECT 2, 28 FROM dual UNION ALL
+	  SELECT 3, 31 FROM dual UNION ALL 
+	  SELECT 4, 30 FROM dual UNION ALL 
+	  SELECT 5, 31 FROM dual UNION ALL 
+	  SELECT 6, 30 FROM dual UNION ALL 
+	  SELECT 7, 31 FROM dual UNION ALL 
+	  SELECT 8, 31 FROM dual UNION ALL 
+	  SELECT 9, 30 FROM dual UNION ALL 
+	  SELECT 10, 31 FROM dual UNION ALL 
+	  SELECT 11, 30 FROM dual UNION ALL 
+	  SELECT 12, 31 FROM dual
+	), first_columns AS (
+		SELECT
+			vv.ATA 
+			, vv.ATD
+			, vv.VSL_ID 
+			, vv.BERTH 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
 			, CASE 
-				WHEN vv.berth = '1' OR vv.berth = '2' OR vv.berth = '3' OR vv.berth = '4' THEN 'Main Berth (1-2-3-4)' 
-				WHEN vv.berth = '5' THEN 'Berth 5'
-				WHEN vv.berth = '6' THEN 'Berth 6'
-				WHEN vv.berth = '8' THEN 'Berth 8'
-				WHEN vv.berth = '7' THEN 'Berth 7'
-				ELSE vv.berth
+				WHEN vv.berth = '10' THEN '1'
+				WHEN vv.berth = '11' THEN '1'
+				WHEN vv.berth = '12' THEN '2'
+				WHEN vv.berth = '2' THEN '2'
+				WHEN vv.berth = '13' THEN '3'
 			  END AS berth_name
-			, CASE 
-				WHEN vv.berth = '1' OR vv.berth = '2' OR vv.berth = '3' OR vv.berth = '4' THEN 1246
-				WHEN vv.berth = '5' THEN 400
-				WHEN vv.berth = '6' THEN 250
-				WHEN vv.berth = '8' THEN 400
-				WHEN vv.berth = '7' THEN 300
-				ELSE 0
-			  END AS berth_size
+			, (vv.atd - vv.ata) * 24 AS StayHours
+			, vc.LOA / 1000 AS loa
+			, vc.loa / 1000 + 0 AS berth_space_used
+			, 1350 / 3 AS berth_size
 		FROM vessel_visits vv
 		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
 		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
@@ -2151,7 +2261,83 @@ WITH
 			fc.atd
 )
 SELECT 
+	EXTRACT (YEAR FROM bu.atd) AS year
+	, dim.mnth AS month
+	, bu.berth_name
+	, count(*) AS Calls
+	, AVG(bu.berth_SIZE) AS "size" 
+	, sum(bu.stayhours) AS stay_hours
+	, sum(bu.berth_used) AS berth_used
+	, avg(bu.berth_size) * dim.days * 24 AS available_berth_hours
+	, CASE 
+		WHEN NOT (bu.berth_size = 0) THEN sum(bu.berth_used) / avg(bu.berth_size) / dim.days / 20.5 * 100 ELSE NULL 
+	  END AS berth_utilization
+FROM berth_used bu
+JOIN days_in_month dim ON EXTRACT (MONTH FROM bu.atd) = dim.mnth
+GROUP BY 
 	EXTRACT (YEAR FROM bu.atd)
+	, dim.mnth
+	, bu.berth_name
+	, bu.berth_size
+	, dim.days
+ORDER BY 
+	EXTRACT (YEAR FROM bu.atd)
+	, dim.mnth
+	, bu.berth_name
+;
+
+--Berth occupancy, all months
+WITH 
+	days_in_month AS (
+	  SELECT 1 AS mnth, 31 AS days FROM dual UNION ALL
+	  SELECT 2, 28 FROM dual UNION ALL
+	  SELECT 3, 31 FROM dual UNION ALL 
+	  SELECT 4, 30 FROM dual UNION ALL 
+	  SELECT 5, 31 FROM dual UNION ALL 
+	  SELECT 6, 30 FROM dual UNION ALL 
+	  SELECT 7, 31 FROM dual UNION ALL 
+	  SELECT 8, 31 FROM dual UNION ALL 
+	  SELECT 9, 30 FROM dual UNION ALL 
+	  SELECT 10, 31 FROM dual UNION ALL 
+	  SELECT 11, 30 FROM dual UNION ALL 
+	  SELECT 12, 31 FROM dual
+	), first_columns AS (
+		SELECT
+			vv.ATA 
+			, vv.ATD
+			, vv.VSL_ID 
+			, vv.BERTH 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, CASE 
+				WHEN vv.berth = '10' THEN '1'
+				WHEN vv.berth = '11' THEN '1'
+				WHEN vv.berth = '12' THEN '2'
+				WHEN vv.berth = '2' THEN '2'
+				WHEN vv.berth = '13' THEN '3'
+			  END AS berth_name
+			, (vv.atd - vv.ata) * 24 AS StayHours
+			, vc.LOA / 1000 AS loa
+			, vc.loa / 1000 + 0 AS berth_space_used
+			, 1350 / 3 AS berth_size
+		FROM vessel_visits vv
+		LEFT JOIN spinnaker.vessel spv ON spv.code = vv.vsl_id
+		LEFT JOIN spinnaker.vc_class vc ON spv.CLASS_ID = vc.ID 
+		WHERE 
+			EXTRACT (YEAR FROM vv.atd) = 2022 OR 
+			EXTRACT (YEAR FROM vv.atd) = 2023
+--		ORDER BY 
+--			vv.ATD 
+	), berth_used AS (
+		SELECT 
+			fc.*
+			, fc.stayhours * fc.berth_space_used AS berth_used
+		FROM first_columns fc
+		ORDER BY 
+			fc.atd
+)
+SELECT 
+	EXTRACT (YEAR FROM bu.atd) AS year
 	, dim.mnth
 	, count(*) AS Calls
 	, sum(bu.berth_used) AS berth_used
