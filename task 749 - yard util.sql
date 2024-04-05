@@ -1,3 +1,4 @@
+--Initial look-see scratch
 WITH 
 	inorout AS (
 		SELECT 
@@ -37,3 +38,5 @@ FROM (
 ) subquery
 WHERE rn = 1
 GROUP BY group_field;
+
+SELECT * FROM cg_ref_codes;
