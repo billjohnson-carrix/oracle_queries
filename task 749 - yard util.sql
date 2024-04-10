@@ -345,6 +345,9 @@ ORDER BY
 --It seems like the equipment_jn table holds the transactions that edit the equipment table.
 --Let's build the accumulating snapshot from it and see what we get.
 --Running in ZLO UAT 2 because it seems to have good data for a couple years or so.
+--This query seems to work, but is difficult to validate. I'm going to re-write it so that
+--every update has an effective and expired datetime, and then build a second summary table 
+--for entering and exiting the yard.
 WITH 
 	jn_entries AS (
 		SELECT
@@ -479,4 +482,208 @@ ORDER BY monthstart
 ;
 
 SELECT count(*) FROM equipment WHERE loc_type = 'Y';
+SELECT 
+	LOC_TYPE 
+	, count(*)
+FROM equipment_jn
+GROUP BY 
+	LOC_TYPE 
+;
 SELECT count(*) FROM equipment_Jn;
+
+		SELECT
+			*
+			--ejn.nbr, ejn.JN_DATETIME, ejn.LOC_TYPE 
+		FROM equipment_jn ejn
+		WHERE 
+			NOT (
+			sztp_class = 'CTR'
+			AND REGEXP_LIKE(NBR, '[[:alpha:]]{4}[[:digit:]]{7}'))
+			
+--Re-write to provide effective and expired columns for every transaction
+--This seems to be working but it gives me the same answer as I had with the first query.
+--I like this one better anyhow. It's more compact and seem more straight-forward.
+WITH 
+	jn_entries AS (
+		SELECT
+			*
+		FROM equipment_jn
+		WHERE 
+			sztp_class = 'CTR'
+	), labeled_entries AS (
+		SELECT
+			jn_entries.*
+			, jn_datetime AS effective
+			, LEAD(jn_datetime,1,NULL) over (PARTITION BY nbr ORDER BY jn_entryid) AS expired
+			, CASE 
+				WHEN loc_type = 'Y' AND (LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) IS NULL 
+					OR NOT (LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y')) THEN 'Enters'
+				WHEN NOT (loc_type = 'Y') OR LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y' THEN 'No entry'
+			  END AS entry_label
+			, CASE 
+				WHEN loc_type = 'Y' AND LEAD(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) IS NULL THEN 'Current'
+				WHEN NOT (loc_type = 'Y') AND lag(loc_type,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y' THEN 'Exits'
+				WHEN loc_type = 'Y' OR lag(loc_type,1,null) OVER (PARTITION BY nbr order BY jn_entryid) IS NULL 
+					OR NOT (lag(loc_type,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y') THEN 'No exit'
+			  END AS exit_label
+		FROM jn_entries
+	), inv_events AS (
+		SELECT 
+			jn_datetime
+			, jn_entryid
+			, nbr
+			, loc_type
+			, effective
+			, expired
+			, entry_label
+			, exit_label
+		FROM 
+			labeled_entries
+		WHERE 
+			entry_label = 'Enters'
+			OR exit_label = 'Exits'
+			OR exit_label = 'Current'
+	), yard_durations AS (
+		SELECT 
+			nbr
+			, CASE 
+				WHEN nbr = LEAD(nbr,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) AND entry_label = 'Enters' THEN jn_datetime
+				ELSE NULL 
+			  END AS in_yard_datetime
+			, CASE 
+				WHEN nbr = lead(nbr,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
+					AND lead(exit_label,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Exits' THEN lead(jn_datetime,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid)
+				WHEN nbr = lead(nbr,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
+					AND lead(exit_label,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Current' THEN  SYSDATE 
+				ELSE null
+			  END AS out_yard_datetime
+		FROM inv_events
+	), accum_snap AS (
+		SELECT 
+			*
+		FROM yard_durations
+		WHERE 
+			in_yard_datetime IS NOT NULL
+	), DateSeries (MonthStart) AS (
+		SELECT 
+			TRUNC(TO_DATE('2022-01-01', 'YYYY-MM-DD'), 'MONTH') AS MonthStart
+		FROM 
+			dual
+		UNION ALL
+		SELECT 
+			ADD_MONTHS(MonthStart, 1)
+		FROM 
+			DateSeries
+		WHERE 
+			ADD_MONTHS(MonthStart, 1) <= TRUNC(SYSDATE, 'MONTH')
+	), dates_of_interest AS (
+		SELECT 
+			MonthStart
+		FROM 
+			DateSeries	
+	)
+SELECT 
+	doi.monthstart
+	, count(*)
+FROM dates_of_interest doi
+JOIN accum_snap ON 
+	doi.monthstart BETWEEN in_yard_datetime AND out_yard_datetime
+	OR (doi.monthstart >= in_yard_datetime AND out_yard_datetime IS NULL)
+	OR (doi.monthstart < out_yard_datetime AND in_yard_datetime IS null)
+GROUP BY monthstart
+ORDER BY monthstart
+;
+			
+--Switching to ZLO UAT 2
+WITH 
+	jn_entries AS (
+		SELECT
+			*
+		FROM equipment_jn
+		WHERE 
+			sztp_class = 'CTR'
+	), labeled_entries AS (
+		SELECT
+			jn_entries.*
+			, jn_datetime AS effective
+			, LEAD(jn_datetime,1,NULL) over (PARTITION BY nbr ORDER BY jn_entryid) AS expired
+			, CASE 
+				WHEN loc_type = 'Y' AND (LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) IS NULL 
+					OR NOT (LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y')) THEN 'Enters'
+				WHEN NOT (loc_type = 'Y') OR LAG(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y' THEN 'No entry'
+			  END AS entry_label
+			, CASE 
+				WHEN loc_type = 'Y' AND LEAD(loc_type,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) IS NULL THEN 'Current'
+				WHEN NOT (loc_type = 'Y') AND lag(loc_type,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y' THEN 'Exits'
+				WHEN loc_type = 'Y' OR lag(loc_type,1,null) OVER (PARTITION BY nbr order BY jn_entryid) IS NULL 
+					OR NOT (lag(loc_type,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y') THEN 'No exit'
+			  END AS exit_label
+		FROM jn_entries
+	), inv_events AS (
+		SELECT 
+			jn_datetime
+			, jn_entryid
+			, nbr
+			, loc_type
+			, effective
+			, expired
+			, entry_label
+			, exit_label
+		FROM 
+			labeled_entries
+		WHERE 
+			entry_label = 'Enters'
+			OR exit_label = 'Exits'
+			OR exit_label = 'Current'
+	), yard_durations AS (
+		SELECT 
+			nbr
+			, CASE 
+				WHEN nbr = LEAD(nbr,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) AND entry_label = 'Enters' THEN jn_datetime
+				ELSE NULL 
+			  END AS in_yard_datetime
+			, CASE 
+				WHEN nbr = lead(nbr,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
+					AND lead(exit_label,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Exits' THEN lead(jn_datetime,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid)
+				WHEN nbr = lead(nbr,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
+					AND lead(exit_label,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Current' THEN  SYSDATE 
+				ELSE null
+			  END AS out_yard_datetime
+		FROM inv_events
+	), accum_snap AS (
+		SELECT 
+			*
+		FROM yard_durations
+		WHERE 
+			in_yard_datetime IS NOT NULL
+	), DateSeries (MonthStart) AS (
+		SELECT 
+			TRUNC(TO_DATE('2022-01-01', 'YYYY-MM-DD'), 'MONTH') AS MonthStart
+		FROM 
+			dual
+		UNION ALL
+		SELECT 
+			ADD_MONTHS(MonthStart, 1)
+		FROM 
+			DateSeries
+		WHERE 
+			ADD_MONTHS(MonthStart, 1) <= TRUNC(SYSDATE, 'MONTH')
+	), dates_of_interest AS (
+		SELECT 
+			MonthStart
+		FROM 
+			DateSeries	
+	)
+SELECT 
+	doi.monthstart
+	, count(*)
+FROM dates_of_interest doi
+JOIN accum_snap ON 
+	doi.monthstart BETWEEN in_yard_datetime AND out_yard_datetime
+	OR (doi.monthstart >= in_yard_datetime AND out_yard_datetime IS NULL)
+	OR (doi.monthstart < out_yard_datetime AND in_yard_datetime IS null)
+GROUP BY monthstart
+ORDER BY monthstart
+;
+
+SELECT count(*) FROM equipment WHERE loc_type = 'Y';
