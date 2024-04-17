@@ -1167,3 +1167,162 @@ JOIN accum_snap ON
 GROUP BY monthstart
 ORDER BY monthstart
 ;
+
+
+--Splitting historical counts in blocks from heaps
+--The pos_id field in the equipment table specifies either a heap or a 20- or 40-row name from the spinnaker.td_row table
+--concatenated with the custom_name of a stack from the spinnaker.td_stack_name table. For MIT UAT around 0.2% aren't in a
+--heap or a recognizable row-stack name.
+WITH 
+	heap_names AS (
+		SELECT 
+			b.name
+		FROM spinnaker.td_block b
+		WHERE 
+			b.TYPE = '4'
+	), row_names20 AS (
+		SELECT 
+			r.block_id
+			, r.id AS row_id
+			, r.name AS name
+		FROM spinnaker.td_row r
+	), row_names40 AS (
+		SELECT 
+			r.block_id
+			, r.id AS row_id
+			, r.name40 AS name
+		FROM spinnaker.td_row r
+	), row_names AS (
+		SELECT block_id, name FROM row_names20
+		UNION 
+		SELECT block_id, name FROM row_names40
+	), stacks_by_block AS (
+		SELECT 
+			tsn.block_id
+			, tsn.stack_index
+			, tsn.custom_name
+		FROM spinnaker.td_stack_name tsn
+	), ROWstack_names AS (
+		SELECT 
+/*			rn.block_id
+			, rn.row_id
+			, sb.stack_index
+			, */rn.name || sb.custom_name AS ROWstack_name
+		FROM row_names rn
+		JOIN stacks_by_block sb ON sb.block_id = rn.block_id
+	), heap_and_rowstack_names AS ( 
+		SELECT * FROM ROWstack_names
+		UNION
+		SELECT * FROM heap_names
+	), pos_id_names AS (
+		SELECT 
+			eq.POS_id 
+			, count(*) AS count
+		FROM equipment eq
+		WHERE 
+			eq.loc_type ='Y'
+			AND sztp_class = 'CTR'
+		GROUP BY 
+			eq.pos_id
+		ORDER BY 
+			2 DESC 
+	), labeled_results AS (
+		SELECT 
+			pin.pos_id AS pos_id
+			, pin.count
+			, CASE 
+				WHEN EXISTS (
+					SELECT 1
+					FROM heap_and_rowstack_names
+					WHERE heap_and_rowstack_names.ROWstack_name = pin.pos_id 
+				)
+				THEN 'Yes'
+				ELSE 'No'
+			  END AS in_result_set
+		FROM pos_id_names pin
+	)
+SELECT 	
+	pos_id
+	, count
+	, in_result_set
+FROM labeled_results
+WHERE in_result_set = 'No'
+;
+
+--23811
+SELECT 	
+	count(*)
+FROM equipment eq
+WHERE 
+	eq.loc_type = 'Y'
+;
+
+--Partitioning the equipment table by heap, block, and other
+WITH 
+	heap_names AS (
+		SELECT 
+			b.name
+		FROM spinnaker.td_block b
+		WHERE 
+			b.TYPE = '4'
+	), row_names20 AS (
+		SELECT 
+			r.block_id
+			, r.id AS row_id
+			, r.name AS name
+		FROM spinnaker.td_row r
+	), row_names40 AS (
+		SELECT 
+			r.block_id
+			, r.id AS row_id
+			, r.name40 AS name
+		FROM spinnaker.td_row r
+	), row_names AS (
+		SELECT block_id, name FROM row_names20
+		UNION 
+		SELECT block_id, name FROM row_names40
+	), stacks_by_block AS (
+		SELECT 
+			tsn.block_id
+			, tsn.stack_index
+			, tsn.custom_name
+		FROM spinnaker.td_stack_name tsn
+	), ROWstack_names AS (
+		SELECT 
+/*			rn.block_id
+			, rn.row_id
+			, sb.stack_index
+			, */rn.name || sb.custom_name AS ROWstack_name
+		FROM row_names rn
+		JOIN stacks_by_block sb ON sb.block_id = rn.block_id
+	), partitioned_results AS (
+		SELECT
+			eq.pos_id
+			, CASE 
+				WHEN h.name IS NOT NULL THEN 'Heap'
+				WHEN b.ROWstack_name IS NOT NULL THEN 'Block'
+				ELSE 'Neither'
+			  END AS heap_or_block
+			, eq.*
+		FROM equipment eq
+		LEFT JOIN (SELECT ROWstack_name FROM ROWstack_names) b ON eq.pos_id = b.ROWstack_name
+		LEFT JOIN (SELECT name FROM heap_names) h ON eq.pos_id = h.name
+		WHERE 
+			eq.loc_type = 'Y'
+			AND eq.SZTP_CLASS = 'CTR'
+	)
+SELECT 
+	heap_or_block
+	, count(*)
+FROM partitioned_results
+GROUP BY 
+	heap_or_block
+;
+
+
+SELECT 
+	*
+FROM equipment_jn
+WHERE 
+	jn_entryid IS NULL 
+;
