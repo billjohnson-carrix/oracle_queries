@@ -2638,6 +2638,7 @@ SELECT count(*) FROM unavailable_fine_spots --10891 IN MIT UAT
 ;
 
 --De-hacking the BLOB to binary string conversion
+--Good yard model query for MIT UAT
 WITH 
 	stacks_mask AS (
 		SELECT
@@ -2802,7 +2803,7 @@ WITH
 		LEFT JOIN td_row r ON r.id = ist.row_id
 		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
 		ORDER BY b.name, r.name, ist.stack_index	
-	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
         SELECT 
         	brs.block_id
         	, brs.block_name
@@ -2810,6 +2811,7 @@ WITH
         	, brs.row_name
         	, brs.num_tiers
         	, brs.max_stacks
+        	, brs.num_stacks
         	, brs.flags
         	, brs.stack_flag
         	, brs.stack_index
@@ -2823,381 +2825,32 @@ WITH
         	, brst.row_name
         	, brst.num_tiers
         	, brst.max_stacks
+        	, brst.num_stacks
         	, brst.flags
         	, brst.stack_flag
         	, brst.stack_index
 			, brst.tier_index + 1
 		FROM blocks_rows_stacks_tiers brst 
         WHERE tier_index < num_tiers
-	)
-SELECT
-	brst.block_id
-	, brst.block_name
-	, brst.row_id
-	, brst.row_name
-	, brst.num_tiers
-	, brst.max_stacks
-	, brst.flags
-	, brst.stack_flag
-	, brst.stack_index
-	, brst.tier_index
-FROM blocks_rows_stacks_tiers brst
-ORDER BY
-	brst.block_name
-	, brst.row_name
-	, brst.stack_index
-	, brst.tier_index
-; --just need TO count deleted AND disabled spaces now USING the de-hackified query
-
-WITH 
-	max_stacks AS (
-		SELECT 
-			tsn.block_id
-			, b.name AS block_name
-			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
-		FROM TD_STACK_NAME tsn 
-		LEFT JOIN td_block b ON b.id = tsn.block_id
-		WHERE 
-			NOT (b.TYPE = '4') -- NO heaps
-		GROUP BY 
-			tsn.block_id
-			, b.name
-	), blob_to_bin_pieces AS (
-		SELECT 
-			ms.*
-			, r.ID AS row_id
-			, r.NAME AS row_name
-			, r.num_tiers
-		--	, (trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2 AS num_hex_chars
-		--	, SUBSTR(RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,(trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2) AS STACKS_MASK 
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) AS hex1
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) AS hex2
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) AS hex3
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) AS hex4
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) AS hex5
-			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) AS hex6
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '1111'
-			  END AS bin1
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '1111'
-			  END AS bin2
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '1111'
-			  END AS bin3
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '1111'
-			  END AS bin4
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '1111'
-			  END AS bin5	  
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1000'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '0100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '1100'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '0010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '1010'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '0110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '1110'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '0001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '1001'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '0101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '1101'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '0011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '1011'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '0111'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '1111'
-			  END AS bin6
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '4'
-			  END AS term1
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) IS NULL THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '4'
-			  END AS term2
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) IS NULL THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '4'
-			  END AS term3
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) IS NULL THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '4'
-			  END AS term4
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) IS NULL THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '4'
-			  END AS term5
-			, CASE 
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) IS NULL THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '1'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '2'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '3'
-				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '4'
-			  END AS term6
-			FROM max_stacks ms
-		LEFT JOIN td_row r ON r.BLOCK_ID = ms.block_id
-		--ORDER BY 
-		--	ms.name
-	), blocks_and_rows AS (
+	), yard_model_with_deletions AS (
 		SELECT
-			btp.block_id
-			, Btp.block_name
-			, btp.row_id
-			, btp.row_name
-			, btp.num_tiers
-			, btp.max_stacks
-			, substr(bin1 || bin2 || bin3 || bin4 || bin5 || bin6,1,btp.max_stacks) AS flags
-			, btp.term1 + btp.term2 + btp.term3 + btp.term4 + btp.term5 + btp.term6 AS num_stacks
-		FROM blob_to_bin_pieces btp
-	), blocks_rows_stack_indexes (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, num_stacks, stack_index) AS (
-		SELECT 
-			bnr.block_id
-			, bnr.block_name
-			, bnr.row_id
-			, bnr.row_name
-			, bnr.num_tiers
-			, bnr.max_stacks
-			, bnr.flags
-			, bnr.num_stacks
-			, 0 AS stack_index
-		FROM blocks_and_rows bnr
-		UNION ALL
-		SELECT
-			block_id
-			, block_name
-			, row_id
-			, row_name
-			, num_tiers
-			, max_stacks
-			, flags
-			, num_stacks
-			, stack_index + 1
-		FROM blocks_rows_stack_indexes
-		WHERE stack_index < max_stacks - 1
-	), blocks_rows_stacks AS (
-		SELECT 
-			brsi.*
-			, substr (brsi.flags,brsi.stack_index+1,1) AS stack_flag
-		FROM blocks_rows_stack_indexes brsi
-/*		ORDER BY 
-			brsi.block_name
-			, brsi.row_name
-			, brsi.stack_index
-*/	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
-        SELECT 
-        	brs.block_id
-        	, brs.block_name
-        	, brs.row_id
-        	, brs.row_name
-        	, brs.num_tiers
-        	, brs.max_stacks
-        	, brs.flags
-        	, brs.stack_flag
-        	, brs.stack_index
-        	, 1 AS tier_index 
-        FROM blocks_rows_stacks brs
-        UNION ALL
-        SELECT 
-        	brst.block_id
-        	, brst.block_name
-        	, brst.row_id
-        	, brst.row_name
-        	, brst.num_tiers
-        	, brst.max_stacks
-        	, brst.flags
-        	, brst.stack_flag
-        	, brst.stack_index
-			, brst.tier_index + 1
-		FROM blocks_rows_stacks_tiers brst 
-        WHERE tier_index < num_tiers
-    ), deleted_fine_spots AS (
-		SELECT 
 			brst.block_id
-			, brst.row_id
-			, brst.stack_index
-			, brst.tier_index
-		--	count(*)
-		/*	brst.block_id
 			, brst.block_name
 			, brst.row_id
 			, brst.row_name
 			, brst.num_tiers
 			, brst.max_stacks
+			, brst.num_stacks
 			, brst.flags
 			, brst.stack_flag
 			, brst.stack_index
 			, brst.tier_index
-		*/FROM blocks_rows_stacks_tiers brst
-		WHERE
-			brst.stack_flag = '0'
-		/*ORDER BY 
-			brst.block_id
-			, brst.row_id
+		FROM blocks_rows_stacks_tiers brst
+		ORDER BY
+			brst.block_name
+			, brst.row_name
 			, brst.stack_index
-			, brst.tier_index*/
+			, brst.tier_index
 	), disabled_space_entries AS (
 		SELECT 
 			ys.id
@@ -3272,7 +2925,7 @@ WITH
 			row_index, tiers_in_row, stack_index, tier_index - 1
 		FROM expanded_tiers 
         WHERE tier_index > tiers_in_row - disabled_tiers + 1
-	), disabled_fine_spots AS (
+	), disabled_fine_spots_with_dups AS (
 		SELECT 
 			et.block_id
 			, tr.id AS row_id
@@ -3285,14 +2938,1488 @@ WITH
 			, row_id
 			, stack_index
 			, tier_index
-	), unavailable_fine_spots AS (
+	), disabled_fine_spots AS (
+		SELECT DISTINCT * FROM disabled_fine_spots_with_dups
+	), disabled_joined AS (
 		SELECT 
-			DISTINCT block_id, row_id, stack_index, tier_index
-		FROM (
-			SELECT block_id, row_id, stack_index, tier_index FROM deleted_fine_spots
-			UNION 
-			SELECT block_id, row_id, stack_index, tier_index FROM disabled_fine_spots
-		) combined_results
+			ym.*
+			, dis.block_id AS disabled_block_space
+			, dis.row_id AS disabled_row_space
+			, dis.stack_index AS disabled_stack_space
+			, dis.tier_index AS disabled_tier_space
+		FROM yard_model_with_deletions ym
+		LEFT JOIN disabled_fine_spots dis ON
+			ym.block_id = dis.block_id
+			AND ym.row_id = dis.row_id
+			AND ym.stack_index = dis.stack_index
+			AND ym.tier_index = dis.tier_index
 	)
-SELECT count(*) FROM unavailable_fine_spots --10891 IN MIT UAT
+SELECT 
+	dj.block_id
+	, dj.row_id
+	, dj.stack_index
+	, dj.block_name
+	, dj.row_name
+	, tsn.CUSTOM_NAME
+	, dj.tier_index
+	, dj.max_stacks AS max_stacks_for_block
+	, dj.num_stacks AS num_stacks_for_row
+	, dj.flags AS stack_flags_for_row
+	, dj.num_tiers AS max_tiers_for_row
+	, CASE 
+		WHEN dj.stack_flag = '1' THEN 'Available'
+		WHEN dj.stack_flag = '0' THEN 'Deleted'
+	  END AS deletion_status
+	, CASE 
+		WHEN dj.disabled_block_space IS NULL THEN 'Available'
+		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+	  END AS disabled_status
+	 , CASE 
+	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+	   END AS avail_status
+FROM disabled_joined dj
+JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+ORDER BY 
+	dj.block_name
+	, dj.row_name
+	, dj. stack_index
+	, dj.tier_index
+;
+
+--Switching to ZLO UAT 2
+SELECT 
+	b.*
+	, tsn.*
+FROM td_block b
+LEFT JOIN TD_STACK_NAME tsn ON tsn.block_id = b.id
+WHERE 
+	b.id = '376413974';
+
+--ZLO is using an older value of Spinnaker that doesn't have a single stacks_mask blob.
+--Instead the stacks_mask is spread over 16 columns as decimal integers ranging from 0 to 2^32-1.
+--I will need to replace the current query's CTEs from stacks_mask through ordered_blob.
+WITH 
+	blob_pieces AS (
+		SELECT
+			r.id
+			, r.STACK_MASK 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask)),'FM0XXXXXXX')) AS blob1
+			, r.STACK_MASK2 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask2)),'FM0XXXXXXX')) AS blob2
+			, r.STACK_MASK3 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask3)),'FM0XXXXXXX')) AS blob3
+			, r.STACK_MASK4 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask4)),'FM0XXXXXXX')) AS blob4
+			, r.STACK_MASK5 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask5)),'FM0XXXXXXX')) AS blob5
+			, r.STACK_MASK6 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask6)),'FM0XXXXXXX')) AS blob6
+			, r.STACK_MASK7 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask7)),'FM0XXXXXXX')) AS blob7
+			, r.STACK_MASK8 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask8)),'FM0XXXXXXX')) AS blob8
+			, r.STACK_MASK9 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask9)),'FM0XXXXXXX')) AS blob9
+			, r.STACK_MASK10 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask10)),'FM0XXXXXXX')) AS blob10
+			, r.STACK_MASK11 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask11)),'FM0XXXXXXX')) AS blob11
+			, r.STACK_MASK12
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask12)),'FM0XXXXXXX')) AS blob12
+			, r.STACK_MASK13 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask13)),'FM0XXXXXXX')) AS blob13
+			, r.STACK_MASK14 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask14)),'FM0XXXXXXX')) AS blob14
+			, r.STACK_MASK15 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask15)),'FM0XXXXXXX')) AS blob15
+			, r.STACK_MASK16
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask16)),'FM0XXXXXXX')) AS blob16
+		FROM td_row r
+		LEFT JOIN td_block b ON b.id = r.block_id
+		WHERE NOT(b.TYPE = '4') --NO heaps
+	), ordered_blob AS (
+		SELECT 
+			bp.id
+			, blob1 || blob2 || blob3 || blob4 || 
+				blob5 || blob6 || blob7 || blob8 || 
+				blob9 || blob10 || blob11 || blob12 || 
+				blob13 || blob14 || blob15 || blob16 AS ordered_blobby
+		FROM blob_pieces bp
+	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
+		SELECT
+			id
+			, 2 AS char_index
+			, substr (ordered_blobby,1,1) AS hex
+			, ordered_blobby
+		FROM ordered_blob
+		UNION ALL 
+		SELECT 
+			id 
+			, char_index + 1 AS char_index
+			, substr (ordered_blobby,char_index,1) AS hex
+			, ordered_blobby
+		FROM parsed_hexes_rec
+		WHERE char_index < length(ordered_blobby) + 1
+	), parsed_hexes AS ( 
+		SELECT 
+			id 
+			, char_index - 1 AS char_index
+			, Hex 
+		FROM parsed_hexes_rec
+		ORDER BY id, char_index
+	), hex_to_bin AS (	
+		SELECT 
+			id,
+			char_index,
+			hex,
+			CASE 
+				WHEN hex = '0' THEN '0000'
+				WHEN hex = '1' THEN '1000'
+				WHEN hex = '2' THEN '0100'
+				WHEN hex = '3' THEN '1100'
+				WHEN hex = '4' THEN '0010'
+				WHEN hex = '5' THEN '1010'
+				WHEN hex = '6' THEN '0110'
+				WHEN hex = '7' THEN '1110'
+				WHEN hex = '8' THEN '0001'
+				WHEN hex = '9' THEN '1001'
+				WHEN hex = 'A' THEN '0101'
+				WHEN hex = 'B' THEN '1101'
+				WHEN hex = 'C' THEN '0011'
+				WHEN hex = 'D' THEN '1011'
+				WHEN hex = 'E' THEN '0111'
+				WHEN hex = 'F' THEN '1111'
+			END AS binstr
+		FROM parsed_hexes
+	), binstr AS (
+		SELECT
+			id,
+			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
+		FROM hex_to_bin htb
+		GROUP BY id
+	), max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), flags AS (
+		SELECT 
+			bs.id AS row_id
+			, substr (bs.binary_string,0,ms.max_stacks) AS flags
+		FROM binstr bs
+		LEFT JOIN td_row r ON r.id = bs.id
+		LEFT JOIN td_block b ON b.id = r.block_id
+		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
+		SELECT 
+			flags.row_id
+			, flags.flags
+			, 2 AS ch_index
+			, to_number(substr (flags,1,1)) AS stack_incr
+		FROM flags
+		UNION ALL
+		SELECT 
+			row_id
+			, flags
+			, ch_index + 1 AS ch_index
+			, TO_NUMBER(SUBSTR(flags,ch_index,1)) AS stack_incr
+		FROM stack_increments
+		WHERE ch_index < LENGTH (flags) + 1
+	), num_stacks AS (
+		SELECT 
+			si.row_id
+			, sum(si.stack_incr) AS num_stacks
+		FROM stack_increments si
+		GROUP BY si.row_id, si.flags
+	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
+		SELECT 
+			ms.block_id
+			, r.id AS row_id
+			, 0 AS stack_index
+			, ms.max_stacks
+		FROM max_stacks ms
+		LEFT JOIN td_row r ON r.block_id = ms.block_id
+		UNION ALL 
+		SELECT 
+			block_id
+			, row_id
+			, stack_index + 1 AS stack_index
+			, max_stacks
+		FROM indexed_stacks
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT
+			ist.block_id
+			, b.name AS block_name
+			, ist.row_id
+			, r.name AS row_name
+			, r.num_tiers
+			, ist.max_stacks
+			, flags.flags
+			, ns.num_stacks
+			, ist.stack_index
+			, substr(flags.flags,ist.stack_index+1,1) AS stack_flag
+		FROM indexed_stacks ist
+		LEFT JOIN flags ON flags.ROW_id = ist.row_id
+		LEFT JOIN td_block b ON b.id = ist.block_id
+		LEFT JOIN td_row r ON r.id = ist.row_id
+		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+		ORDER BY b.name, r.name, ist.stack_index	
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.num_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.num_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+	), yard_model_with_deletions AS (
+		SELECT
+			brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.num_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		FROM blocks_rows_stacks_tiers brst
+		ORDER BY
+			brst.block_name
+			, brst.row_name
+			, brst.stack_index
+			, brst.tier_index
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots_with_dups AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), disabled_fine_spots AS (
+		SELECT DISTINCT * FROM disabled_fine_spots_with_dups
+	), disabled_joined AS (
+		SELECT 
+			ym.*
+			, dis.block_id AS disabled_block_space
+			, dis.row_id AS disabled_row_space
+			, dis.stack_index AS disabled_stack_space
+			, dis.tier_index AS disabled_tier_space
+		FROM yard_model_with_deletions ym
+		LEFT JOIN disabled_fine_spots dis ON
+			ym.block_id = dis.block_id
+			AND ym.row_id = dis.row_id
+			AND ym.stack_index = dis.stack_index
+			AND ym.tier_index = dis.tier_index
+	)
+SELECT 
+	dj.block_id
+	, dj.row_id
+	, dj.stack_index
+	, dj.block_name
+	, dj.row_name
+	, tsn.CUSTOM_NAME
+	, dj.tier_index
+	, dj.max_stacks AS max_stacks_for_block
+	, dj.num_stacks AS num_stacks_for_row
+	, dj.flags AS stack_flags_for_row
+	, dj.num_tiers AS max_tiers_for_row
+	, CASE 
+		WHEN dj.stack_flag = '1' THEN 'Available'
+		WHEN dj.stack_flag = '0' THEN 'Deleted'
+	  END AS deletion_status
+	, CASE 
+		WHEN dj.disabled_block_space IS NULL THEN 'Available'
+		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+	  END AS disabled_status
+	 , CASE 
+	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+	   END AS avail_status
+FROM disabled_joined dj
+JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+ORDER BY 
+	dj.block_name
+	, dj.row_name
+	, dj. stack_index
+	, dj.tier_index
+;
+
+--Switching to PCT UAT
+WITH 
+	blob_pieces AS (
+		SELECT
+			r.id
+			, r.STACK_MASK 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask)),'FM0XXXXXXX')) AS blob1
+			, r.STACK_MASK2 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask2)),'FM0XXXXXXX')) AS blob2
+			, r.STACK_MASK3 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask3)),'FM0XXXXXXX')) AS blob3
+			, r.STACK_MASK4 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask4)),'FM0XXXXXXX')) AS blob4
+			, r.STACK_MASK5 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask5)),'FM0XXXXXXX')) AS blob5
+			, r.STACK_MASK6 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask6)),'FM0XXXXXXX')) AS blob6
+			, r.STACK_MASK7 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask7)),'FM0XXXXXXX')) AS blob7
+			, r.STACK_MASK8 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask8)),'FM0XXXXXXX')) AS blob8
+			, r.STACK_MASK9 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask9)),'FM0XXXXXXX')) AS blob9
+			, r.STACK_MASK10 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask10)),'FM0XXXXXXX')) AS blob10
+			, r.STACK_MASK11 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask11)),'FM0XXXXXXX')) AS blob11
+			, r.STACK_MASK12
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask12)),'FM0XXXXXXX')) AS blob12
+			, r.STACK_MASK13 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask13)),'FM0XXXXXXX')) AS blob13
+			, r.STACK_MASK14 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask14)),'FM0XXXXXXX')) AS blob14
+			, r.STACK_MASK15 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask15)),'FM0XXXXXXX')) AS blob15
+			, r.STACK_MASK16
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask16)),'FM0XXXXXXX')) AS blob16
+		FROM td_row r
+		LEFT JOIN td_block b ON b.id = r.block_id
+		WHERE NOT(b.TYPE = '4') --NO heaps
+	), ordered_blob AS (
+		SELECT 
+			bp.id
+			, blob1 || blob2 || blob3 || blob4 || 
+				blob5 || blob6 || blob7 || blob8 || 
+				blob9 || blob10 || blob11 || blob12 || 
+				blob13 || blob14 || blob15 || blob16 AS ordered_blobby
+		FROM blob_pieces bp
+	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
+		SELECT
+			id
+			, 2 AS char_index
+			, substr (ordered_blobby,1,1) AS hex
+			, ordered_blobby
+		FROM ordered_blob
+		UNION ALL 
+		SELECT 
+			id 
+			, char_index + 1 AS char_index
+			, substr (ordered_blobby,char_index,1) AS hex
+			, ordered_blobby
+		FROM parsed_hexes_rec
+		WHERE char_index < length(ordered_blobby) + 1
+	), parsed_hexes AS ( 
+		SELECT 
+			id 
+			, char_index - 1 AS char_index
+			, Hex 
+		FROM parsed_hexes_rec
+		ORDER BY id, char_index
+	), hex_to_bin AS (	
+		SELECT 
+			id,
+			char_index,
+			hex,
+			CASE 
+				WHEN hex = '0' THEN '0000'
+				WHEN hex = '1' THEN '1000'
+				WHEN hex = '2' THEN '0100'
+				WHEN hex = '3' THEN '1100'
+				WHEN hex = '4' THEN '0010'
+				WHEN hex = '5' THEN '1010'
+				WHEN hex = '6' THEN '0110'
+				WHEN hex = '7' THEN '1110'
+				WHEN hex = '8' THEN '0001'
+				WHEN hex = '9' THEN '1001'
+				WHEN hex = 'A' THEN '0101'
+				WHEN hex = 'B' THEN '1101'
+				WHEN hex = 'C' THEN '0011'
+				WHEN hex = 'D' THEN '1011'
+				WHEN hex = 'E' THEN '0111'
+				WHEN hex = 'F' THEN '1111'
+			END AS binstr
+		FROM parsed_hexes
+	), binstr AS (
+		SELECT
+			id,
+			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
+		FROM hex_to_bin htb
+		GROUP BY id
+	), max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), flags AS (
+		SELECT 
+			bs.id AS row_id
+			, substr (bs.binary_string,0,ms.max_stacks) AS flags
+		FROM binstr bs
+		LEFT JOIN td_row r ON r.id = bs.id
+		LEFT JOIN td_block b ON b.id = r.block_id
+		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
+		SELECT 
+			flags.row_id
+			, flags.flags
+			, 2 AS ch_index
+			, to_number(substr (flags,1,1)) AS stack_incr
+		FROM flags
+		UNION ALL
+		SELECT 
+			row_id
+			, flags
+			, ch_index + 1 AS ch_index
+			, TO_NUMBER(SUBSTR(flags,ch_index,1)) AS stack_incr
+		FROM stack_increments
+		WHERE ch_index < LENGTH (flags) + 1
+	), num_stacks AS (
+		SELECT 
+			si.row_id
+			, sum(si.stack_incr) AS num_stacks
+		FROM stack_increments si
+		GROUP BY si.row_id, si.flags
+	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
+		SELECT 
+			ms.block_id
+			, r.id AS row_id
+			, 0 AS stack_index
+			, ms.max_stacks
+		FROM max_stacks ms
+		LEFT JOIN td_row r ON r.block_id = ms.block_id
+		UNION ALL 
+		SELECT 
+			block_id
+			, row_id
+			, stack_index + 1 AS stack_index
+			, max_stacks
+		FROM indexed_stacks
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT
+			ist.block_id
+			, b.name AS block_name
+			, ist.row_id
+			, r.name AS row_name
+			, r.num_tiers
+			, ist.max_stacks
+			, flags.flags
+			, ns.num_stacks
+			, ist.stack_index
+			, substr(flags.flags,ist.stack_index+1,1) AS stack_flag
+		FROM indexed_stacks ist
+		LEFT JOIN flags ON flags.ROW_id = ist.row_id
+		LEFT JOIN td_block b ON b.id = ist.block_id
+		LEFT JOIN td_row r ON r.id = ist.row_id
+		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+		ORDER BY b.name, r.name, ist.stack_index	
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.num_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.num_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+	), yard_model_with_deletions AS (
+		SELECT
+			brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.num_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		FROM blocks_rows_stacks_tiers brst
+		ORDER BY
+			brst.block_name
+			, brst.row_name
+			, brst.stack_index
+			, brst.tier_index
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots_with_dups AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), disabled_fine_spots AS (
+		SELECT DISTINCT * FROM disabled_fine_spots_with_dups
+	), disabled_joined AS (
+		SELECT 
+			ym.*
+			, dis.block_id AS disabled_block_space
+			, dis.row_id AS disabled_row_space
+			, dis.stack_index AS disabled_stack_space
+			, dis.tier_index AS disabled_tier_space
+		FROM yard_model_with_deletions ym
+		LEFT JOIN disabled_fine_spots dis ON
+			ym.block_id = dis.block_id
+			AND ym.row_id = dis.row_id
+			AND ym.stack_index = dis.stack_index
+			AND ym.tier_index = dis.tier_index
+	)
+SELECT 
+	dj.block_id
+	, dj.row_id
+	, dj.stack_index
+	, dj.block_name
+	, dj.row_name
+	, tsn.CUSTOM_NAME
+	, dj.tier_index
+	, dj.max_stacks AS max_stacks_for_block
+	, dj.num_stacks AS num_stacks_for_row
+	, dj.flags AS stack_flags_for_row
+	, dj.num_tiers AS max_tiers_for_row
+	, CASE 
+		WHEN dj.stack_flag = '1' THEN 'Available'
+		WHEN dj.stack_flag = '0' THEN 'Deleted'
+	  END AS deletion_status
+	, CASE 
+		WHEN dj.disabled_block_space IS NULL THEN 'Available'
+		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+	  END AS disabled_status
+	 , CASE 
+	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+	   END AS avail_status
+FROM disabled_joined dj
+JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+ORDER BY 
+	dj.block_name
+	, dj.row_name
+	, dj. stack_index
+	, dj.tier_index
+;
+
+--Switching to T18 UAT
+WITH 
+	blob_pieces AS (
+		SELECT
+			r.id
+			, r.STACK_MASK 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask)),'FM0XXXXXXX')) AS blob1
+			, r.STACK_MASK2 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask2)),'FM0XXXXXXX')) AS blob2
+			, r.STACK_MASK3 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask3)),'FM0XXXXXXX')) AS blob3
+			, r.STACK_MASK4 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask4)),'FM0XXXXXXX')) AS blob4
+			, r.STACK_MASK5 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask5)),'FM0XXXXXXX')) AS blob5
+			, r.STACK_MASK6 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask6)),'FM0XXXXXXX')) AS blob6
+			, r.STACK_MASK7 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask7)),'FM0XXXXXXX')) AS blob7
+			, r.STACK_MASK8 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask8)),'FM0XXXXXXX')) AS blob8
+			, r.STACK_MASK9 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask9)),'FM0XXXXXXX')) AS blob9
+			, r.STACK_MASK10 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask10)),'FM0XXXXXXX')) AS blob10
+			, r.STACK_MASK11 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask11)),'FM0XXXXXXX')) AS blob11
+			, r.STACK_MASK12
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask12)),'FM0XXXXXXX')) AS blob12
+			, r.STACK_MASK13 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask13)),'FM0XXXXXXX')) AS blob13
+			, r.STACK_MASK14 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask14)),'FM0XXXXXXX')) AS blob14
+			, r.STACK_MASK15 
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask15)),'FM0XXXXXXX')) AS blob15
+			, r.STACK_MASK16
+			, REVERSE(TO_CHAR(TO_NUMBER(TO_BINARY_DOUBLE(r.stack_mask16)),'FM0XXXXXXX')) AS blob16
+		FROM td_row r
+		LEFT JOIN td_block b ON b.id = r.block_id
+		WHERE NOT(b.TYPE = '4') --NO heaps
+	), ordered_blob AS (
+		SELECT 
+			bp.id
+			, blob1 || blob2 || blob3 || blob4 || 
+				blob5 || blob6 || blob7 || blob8 || 
+				blob9 || blob10 || blob11 || blob12 || 
+				blob13 || blob14 || blob15 || blob16 AS ordered_blobby
+		FROM blob_pieces bp
+	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
+		SELECT
+			id
+			, 2 AS char_index
+			, substr (ordered_blobby,1,1) AS hex
+			, ordered_blobby
+		FROM ordered_blob
+		UNION ALL 
+		SELECT 
+			id 
+			, char_index + 1 AS char_index
+			, substr (ordered_blobby,char_index,1) AS hex
+			, ordered_blobby
+		FROM parsed_hexes_rec
+		WHERE char_index < length(ordered_blobby) + 1
+	), parsed_hexes AS ( 
+		SELECT 
+			id 
+			, char_index - 1 AS char_index
+			, Hex 
+		FROM parsed_hexes_rec
+		ORDER BY id, char_index
+	), hex_to_bin AS (	
+		SELECT 
+			id,
+			char_index,
+			hex,
+			CASE 
+				WHEN hex = '0' THEN '0000'
+				WHEN hex = '1' THEN '1000'
+				WHEN hex = '2' THEN '0100'
+				WHEN hex = '3' THEN '1100'
+				WHEN hex = '4' THEN '0010'
+				WHEN hex = '5' THEN '1010'
+				WHEN hex = '6' THEN '0110'
+				WHEN hex = '7' THEN '1110'
+				WHEN hex = '8' THEN '0001'
+				WHEN hex = '9' THEN '1001'
+				WHEN hex = 'A' THEN '0101'
+				WHEN hex = 'B' THEN '1101'
+				WHEN hex = 'C' THEN '0011'
+				WHEN hex = 'D' THEN '1011'
+				WHEN hex = 'E' THEN '0111'
+				WHEN hex = 'F' THEN '1111'
+			END AS binstr
+		FROM parsed_hexes
+	), binstr AS (
+		SELECT
+			id,
+			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
+		FROM hex_to_bin htb
+		GROUP BY id
+	), max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), flags AS (
+		SELECT 
+			bs.id AS row_id
+			, substr (bs.binary_string,0,ms.max_stacks) AS flags
+		FROM binstr bs
+		LEFT JOIN td_row r ON r.id = bs.id
+		LEFT JOIN td_block b ON b.id = r.block_id
+		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
+		SELECT 
+			flags.row_id
+			, flags.flags
+			, 2 AS ch_index
+			, to_number(substr (flags,1,1)) AS stack_incr
+		FROM flags
+		UNION ALL
+		SELECT 
+			row_id
+			, flags
+			, ch_index + 1 AS ch_index
+			, TO_NUMBER(SUBSTR(flags,ch_index,1)) AS stack_incr
+		FROM stack_increments
+		WHERE ch_index < LENGTH (flags) + 1
+	), num_stacks AS (
+		SELECT 
+			si.row_id
+			, sum(si.stack_incr) AS num_stacks
+		FROM stack_increments si
+		GROUP BY si.row_id, si.flags
+	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
+		SELECT 
+			ms.block_id
+			, r.id AS row_id
+			, 0 AS stack_index
+			, ms.max_stacks
+		FROM max_stacks ms
+		LEFT JOIN td_row r ON r.block_id = ms.block_id
+		UNION ALL 
+		SELECT 
+			block_id
+			, row_id
+			, stack_index + 1 AS stack_index
+			, max_stacks
+		FROM indexed_stacks
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT
+			ist.block_id
+			, b.name AS block_name
+			, ist.row_id
+			, r.name AS row_name
+			, r.num_tiers
+			, ist.max_stacks
+			, flags.flags
+			, ns.num_stacks
+			, ist.stack_index
+			, substr(flags.flags,ist.stack_index+1,1) AS stack_flag
+		FROM indexed_stacks ist
+		LEFT JOIN flags ON flags.ROW_id = ist.row_id
+		LEFT JOIN td_block b ON b.id = ist.block_id
+		LEFT JOIN td_row r ON r.id = ist.row_id
+		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+		ORDER BY b.name, r.name, ist.stack_index	
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.num_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.num_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+	), yard_model_with_deletions AS (
+		SELECT
+			brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.num_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		FROM blocks_rows_stacks_tiers brst
+		ORDER BY
+			brst.block_name
+			, brst.row_name
+			, brst.stack_index
+			, brst.tier_index
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots_with_dups AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), disabled_fine_spots AS (
+		SELECT DISTINCT * FROM disabled_fine_spots_with_dups
+	), disabled_joined AS (
+		SELECT 
+			ym.*
+			, dis.block_id AS disabled_block_space
+			, dis.row_id AS disabled_row_space
+			, dis.stack_index AS disabled_stack_space
+			, dis.tier_index AS disabled_tier_space
+		FROM yard_model_with_deletions ym
+		LEFT JOIN disabled_fine_spots dis ON
+			ym.block_id = dis.block_id
+			AND ym.row_id = dis.row_id
+			AND ym.stack_index = dis.stack_index
+			AND ym.tier_index = dis.tier_index
+	)
+SELECT 
+	dj.block_id
+	, dj.row_id
+	, dj.stack_index
+	, dj.block_name
+	, dj.row_name
+	, tsn.CUSTOM_NAME
+	, dj.tier_index
+	, dj.max_stacks AS max_stacks_for_block
+	, dj.num_stacks AS num_stacks_for_row
+	, dj.flags AS stack_flags_for_row
+	, dj.num_tiers AS max_tiers_for_row
+	, CASE 
+		WHEN dj.stack_flag = '1' THEN 'Available'
+		WHEN dj.stack_flag = '0' THEN 'Deleted'
+	  END AS deletion_status
+	, CASE 
+		WHEN dj.disabled_block_space IS NULL THEN 'Available'
+		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+	  END AS disabled_status
+	 , CASE 
+	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+	   END AS avail_status
+FROM disabled_joined dj
+JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+ORDER BY 
+	dj.block_name
+	, dj.row_name
+	, dj. stack_index
+	, dj.tier_index
+;
+
+--Switching to TAM UAT
+WITH 
+	stacks_mask AS (
+		SELECT
+			tr.id
+			, RAWTOHEX(DBMS_LOB.SUBSTR(tr.STACKS_MASK , 64, 1)) AS blobby
+		FROM td_row tr
+		LEFT JOIN td_block b ON b.id = tr.block_id
+		WHERE NOT(b.TYPE = '4') --NO heaps
+		--FETCH FIRST 2 ROWs only
+	), parsed_double_bytes (id, char_index, double_byte, blobby) AS (
+		SELECT
+			id
+			, 3 AS char_index
+			, substr (blobby,1,2) AS double_byte
+			, blobby
+		FROM stacks_mask sm
+		UNION ALL 
+		SELECT
+			id
+			, char_index + 2 AS char_index
+			, substr (blobby,char_index,2) AS double_byte
+			, blobby
+		FROM parsed_double_bytes
+		WHERE char_index < LENGTH (blobby)
+	), ordered_double_bytes AS (
+		SELECT
+			id
+			, char_index - 2 AS char_index
+			, substr (double_byte,2,1) || SUBSTR (double_byte,1,1) AS ordered_double_byte
+		FROM parsed_double_bytes
+		ORDER BY id, char_index
+	), ordered_blob AS (
+		SELECT
+			id
+			, listagg (ordered_double_byte) WITHIN GROUP (ORDER BY char_index) AS ordered_blobby
+		FROM ordered_double_bytes
+		GROUP BY id
+	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
+		SELECT
+			id
+			, 2 AS char_index
+			, substr (ordered_blobby,1,1) AS hex
+			, ordered_blobby
+		FROM ordered_blob
+		UNION ALL 
+		SELECT 
+			id 
+			, char_index + 1 AS char_index
+			, substr (ordered_blobby,char_index,1) AS hex
+			, ordered_blobby
+		FROM parsed_hexes_rec
+		WHERE char_index < length(ordered_blobby) + 1
+	), parsed_hexes AS ( 
+		SELECT 
+			id 
+			, char_index - 1 AS char_index
+			, Hex 
+		FROM parsed_hexes_rec
+		ORDER BY id, char_index
+	), hex_to_bin AS (	
+		SELECT 
+			id,
+			char_index,
+			hex,
+			CASE 
+				WHEN hex = '0' THEN '0000'
+				WHEN hex = '1' THEN '1000'
+				WHEN hex = '2' THEN '0100'
+				WHEN hex = '3' THEN '1100'
+				WHEN hex = '4' THEN '0010'
+				WHEN hex = '5' THEN '1010'
+				WHEN hex = '6' THEN '0110'
+				WHEN hex = '7' THEN '1110'
+				WHEN hex = '8' THEN '0001'
+				WHEN hex = '9' THEN '1001'
+				WHEN hex = 'A' THEN '0101'
+				WHEN hex = 'B' THEN '1101'
+				WHEN hex = 'C' THEN '0011'
+				WHEN hex = 'D' THEN '1011'
+				WHEN hex = 'E' THEN '0111'
+				WHEN hex = 'F' THEN '1111'
+			END AS binstr
+		FROM parsed_hexes
+	), binstr AS (
+		SELECT
+			id,
+			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
+		FROM hex_to_bin htb
+		GROUP BY id
+	), max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), flags AS (
+		SELECT 
+			bs.id AS row_id
+			, substr (bs.binary_string,0,ms.max_stacks) AS flags
+		FROM binstr bs
+		LEFT JOIN td_row r ON r.id = bs.id
+		LEFT JOIN td_block b ON b.id = r.block_id
+		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
+		SELECT 
+			flags.row_id
+			, flags.flags
+			, 2 AS ch_index
+			, to_number(substr (flags,1,1)) AS stack_incr
+		FROM flags
+		UNION ALL
+		SELECT 
+			row_id
+			, flags
+			, ch_index + 1 AS ch_index
+			, TO_NUMBER(SUBSTR(flags,ch_index,1)) AS stack_incr
+		FROM stack_increments
+		WHERE ch_index < LENGTH (flags) + 1
+	), num_stacks AS (
+		SELECT 
+			si.row_id
+			, sum(si.stack_incr) AS num_stacks
+		FROM stack_increments si
+		GROUP BY si.row_id, si.flags
+	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
+		SELECT 
+			ms.block_id
+			, r.id AS row_id
+			, 0 AS stack_index
+			, ms.max_stacks
+		FROM max_stacks ms
+		LEFT JOIN td_row r ON r.block_id = ms.block_id
+		UNION ALL 
+		SELECT 
+			block_id
+			, row_id
+			, stack_index + 1 AS stack_index
+			, max_stacks
+		FROM indexed_stacks
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT
+			ist.block_id
+			, b.name AS block_name
+			, ist.row_id
+			, r.name AS row_name
+			, r.num_tiers
+			, ist.max_stacks
+			, flags.flags
+			, ns.num_stacks
+			, ist.stack_index
+			, substr(flags.flags,ist.stack_index+1,1) AS stack_flag
+		FROM indexed_stacks ist
+		LEFT JOIN flags ON flags.ROW_id = ist.row_id
+		LEFT JOIN td_block b ON b.id = ist.block_id
+		LEFT JOIN td_row r ON r.id = ist.row_id
+		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+		ORDER BY b.name, r.name, ist.stack_index	
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.num_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.num_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+	), yard_model_with_deletions AS (
+		SELECT
+			brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.num_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		FROM blocks_rows_stacks_tiers brst
+		ORDER BY
+			brst.block_name
+			, brst.row_name
+			, brst.stack_index
+			, brst.tier_index
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots_with_dups AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), disabled_fine_spots AS (
+		SELECT DISTINCT * FROM disabled_fine_spots_with_dups
+	), disabled_joined AS (
+		SELECT 
+			ym.*
+			, dis.block_id AS disabled_block_space
+			, dis.row_id AS disabled_row_space
+			, dis.stack_index AS disabled_stack_space
+			, dis.tier_index AS disabled_tier_space
+		FROM yard_model_with_deletions ym
+		LEFT JOIN disabled_fine_spots dis ON
+			ym.block_id = dis.block_id
+			AND ym.row_id = dis.row_id
+			AND ym.stack_index = dis.stack_index
+			AND ym.tier_index = dis.tier_index
+	)
+SELECT 
+	dj.block_id
+	, dj.row_id
+	, dj.stack_index
+	, dj.block_name
+	, dj.row_name
+	, tsn.CUSTOM_NAME
+	, dj.tier_index
+	, dj.max_stacks AS max_stacks_for_block
+	, dj.num_stacks AS num_stacks_for_row
+	, dj.flags AS stack_flags_for_row
+	, dj.num_tiers AS max_tiers_for_row
+	, CASE 
+		WHEN dj.stack_flag = '1' THEN 'Available'
+		WHEN dj.stack_flag = '0' THEN 'Deleted'
+	  END AS deletion_status
+	, CASE 
+		WHEN dj.disabled_block_space IS NULL THEN 'Available'
+		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+	  END AS disabled_status
+	 , CASE 
+	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+	   END AS avail_status
+FROM disabled_joined dj
+JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+ORDER BY 
+	dj.block_name
+	, dj.row_name
+	, dj. stack_index
+	, dj.tier_index
 ;
