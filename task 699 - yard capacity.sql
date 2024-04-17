@@ -1373,47 +1373,1926 @@ WHERE b.id = '52285060'
 --The strategy now is to create a table that is grained by the fine spot. A fine spot is listed only if it is disabled
 --or deleted. I will then select the distinct rows and count them to get the unavailable space and subtract it from 
 --the product of the number of rows, the number of stacks, and the number of tiers.
+
+--Soln for splitting the flags
+with temp as (select '12456' as str from dual)
+select 
+	substr(str,level,1) AS CHARACTER
+	, LEVEL AS position
+from temp
+connect by level <= length(str);
+
+--Soln for getting the tiers as rows
+WITH number_sequence (num) AS (
+  SELECT 0 AS num FROM DUAL
+  UNION ALL
+  SELECT num + 1 FROM number_sequence WHERE num < 7 - 1
+)
+SELECT num FROM number_sequence;
+
+--Deleted space first
+WITH 
+	max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), blob_to_bin_pieces AS (
+		SELECT 
+			ms.*
+			, r.ID AS row_id
+			, r.NAME AS row_name
+			, r.num_tiers
+		--	, (trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2 AS num_hex_chars
+		--	, SUBSTR(RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,(trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2) AS STACKS_MASK 
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) AS hex1
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) AS hex2
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) AS hex3
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) AS hex4
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) AS hex5
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) AS hex6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '1111'
+			  END AS bin1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '1111'
+			  END AS bin2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '1111'
+			  END AS bin3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '1111'
+			  END AS bin4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '1111'
+			  END AS bin5	  
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '1111'
+			  END AS bin6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '4'
+			  END AS term1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '4'
+			  END AS term2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '4'
+			  END AS term3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '4'
+			  END AS term4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '4'
+			  END AS term5
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '4'
+			  END AS term6
+			FROM max_stacks ms
+		LEFT JOIN td_row r ON r.BLOCK_ID = ms.block_id
+		--ORDER BY 
+		--	ms.name
+	), blocks_and_rows AS (
+		SELECT
+			btp.block_id
+			, Btp.block_name
+			, btp.row_id
+			, btp.row_name
+			, btp.num_tiers
+			, btp.max_stacks
+			, substr(bin1 || bin2 || bin3 || bin4 || bin5 || bin6,1,btp.max_stacks) AS flags
+			, btp.term1 + btp.term2 + btp.term3 + btp.term4 + btp.term5 + btp.term6 AS num_stacks
+		FROM blob_to_bin_pieces btp
+	), blocks_rows_stacks AS (
+		SELECT
+		    bnr.block_id,
+		    bnr.block_name,
+		    bnr.row_id,
+		    bnr.row_name,
+		    bnr.num_tiers,
+		    bnr.max_stacks,
+		    bnr.flags,
+		    SUBSTR(bnr.flags, LEVEL, 1) AS stack_flag,
+		    LEVEL - 1 AS stack_index
+		FROM 
+		    blocks_and_rows bnr
+		CONNECT BY 
+		    PRIOR bnr.block_id = bnr.block_id
+		    AND PRIOR bnr.row_id = bnr.row_id
+		    AND PRIOR SYS_GUID() IS NOT NULL
+		    AND LEVEL <= LENGTH(bnr.flags)
+		ORDER BY
+			bnr.row_name
+			, stack_index
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+    )
 SELECT 
-	b.id AS block_id
-	, b.name AS block_name
-FROM TD_BLOCK tb 
-JOIN td_row tr
-WHERE 
-	NOT (tb.TYPE = '4')
-	AND tb.id = '470409458'
+	count(*)
+/*	brst.block_id
+	, brst.block_name
+	, brst.row_id
+	, brst.row_name
+	, brst.num_tiers
+	, brst.max_stacks
+	, brst.flags
+	, brst.stack_flag
+	, brst.stack_index
+	, brst.tier_index
+*/FROM blocks_rows_stacks_tiers brst
+WHERE
+	brst.stack_flag = '0'
+/*ORDER BY 
+	brst.block_name
+	, brst.row_name
+	, brst.stack_index
+	, brst.tier_index
+*/;
+
+--Soln for getting the tiers as rows
+WITH 
+	your_table AS (
+		SELECT 7 AS your_value FROM dual -- Example: your_table contains the field with the value 7
+	), number_sequence (num) AS (
+		SELECT 1 AS num FROM DUAL
+		UNION ALL
+		SELECT num + 1 FROM number_sequence, your_table WHERE num < your_value - 1
+	), first_digit AS (
+		SELECT num AS dig1 FROM number_sequence
+	), number_sequence2 (num, dig1) AS (
+        SELECT 0 AS num, dig1 FROM first_digit
+        UNION ALL
+        SELECT num + 1, dig1 FROM number_sequence2 
+        WHERE num < dig1 - 1
+    )
+SELECT dig1, num FROM number_sequence2
+ORDER BY dig1, num
 ;
+
+--Deleted space first - rewrite to simplify and de-ChatGPT it
+WITH 
+	max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), blob_to_bin_pieces AS (
+		SELECT 
+			ms.*
+			, r.ID AS row_id
+			, r.NAME AS row_name
+			, r.num_tiers
+		--	, (trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2 AS num_hex_chars
+		--	, SUBSTR(RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,(trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2) AS STACKS_MASK 
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) AS hex1
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) AS hex2
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) AS hex3
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) AS hex4
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) AS hex5
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) AS hex6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '1111'
+			  END AS bin1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '1111'
+			  END AS bin2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '1111'
+			  END AS bin3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '1111'
+			  END AS bin4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '1111'
+			  END AS bin5	  
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '1111'
+			  END AS bin6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '4'
+			  END AS term1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '4'
+			  END AS term2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '4'
+			  END AS term3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '4'
+			  END AS term4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '4'
+			  END AS term5
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '4'
+			  END AS term6
+			FROM max_stacks ms
+		LEFT JOIN td_row r ON r.BLOCK_ID = ms.block_id
+		--ORDER BY 
+		--	ms.name
+	), blocks_and_rows AS (
+		SELECT
+			btp.block_id
+			, Btp.block_name
+			, btp.row_id
+			, btp.row_name
+			, btp.num_tiers
+			, btp.max_stacks
+			, substr(bin1 || bin2 || bin3 || bin4 || bin5 || bin6,1,btp.max_stacks) AS flags
+			, btp.term1 + btp.term2 + btp.term3 + btp.term4 + btp.term5 + btp.term6 AS num_stacks
+		FROM blob_to_bin_pieces btp
+	), blocks_rows_stack_indexes (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, num_stacks, stack_index) AS (
+		SELECT 
+			bnr.block_id
+			, bnr.block_name
+			, bnr.row_id
+			, bnr.row_name
+			, bnr.num_tiers
+			, bnr.max_stacks
+			, bnr.flags
+			, bnr.num_stacks
+			, 0 AS stack_index
+		FROM blocks_and_rows bnr
+		UNION ALL
+		SELECT
+			block_id
+			, block_name
+			, row_id
+			, row_name
+			, num_tiers
+			, max_stacks
+			, flags
+			, num_stacks
+			, stack_index + 1
+		FROM blocks_rows_stack_indexes
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT 
+			brsi.*
+			, substr (brsi.flags,brsi.stack_index+1,1) AS stack_flag
+		FROM blocks_rows_stack_indexes brsi
+/*		ORDER BY 
+			brsi.block_name
+			, brsi.row_name
+			, brsi.stack_index
+*/	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+    )
 SELECT 
-	*
-FROM td_row r
-WHERE r.block_id = '52285060'
+	brst.block_id
+	, brst.row_id
+	, brst.stack_index
+	, brst.tier_index
+--	count(*)
+/*	brst.block_id
+	, brst.block_name
+	, brst.row_id
+	, brst.row_name
+	, brst.num_tiers
+	, brst.max_stacks
+	, brst.flags
+	, brst.stack_flag
+	, brst.stack_index
+	, brst.tier_index
+*/FROM blocks_rows_stacks_tiers brst
+WHERE
+	brst.stack_flag = '0'
+ORDER BY 
+	brst.block_id
+	, brst.row_id
+	, brst.stack_index
+	, brst.tier_index
 ;
 
+--Now for the disabled space
+WITH 
+	disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	)
 SELECT 
-	tsn.*
-	, b.name
-FROM td_stack_name tsn
-JOIN td_block b ON b.id = tsn.block_id
-WHERE tsn.BLOCK_ID = '231825430'
+	et.block_id
+	, tr.id AS row_id
+	, et.stack_index
+	, et.tier_index
+FROM expanded_tiers et
+LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+ORDER BY 
+	block_id
+	, row_id
+	, stack_index
+	, tier_index
 ;
 
-SELECT 
-	*
-FROM ypdisabled_space ys
+--Now for the union and the count
+WITH 
+	max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), blob_to_bin_pieces AS (
+		SELECT 
+			ms.*
+			, r.ID AS row_id
+			, r.NAME AS row_name
+			, r.num_tiers
+		--	, (trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2 AS num_hex_chars
+		--	, SUBSTR(RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,(trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2) AS STACKS_MASK 
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) AS hex1
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) AS hex2
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) AS hex3
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) AS hex4
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) AS hex5
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) AS hex6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '1111'
+			  END AS bin1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '1111'
+			  END AS bin2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '1111'
+			  END AS bin3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '1111'
+			  END AS bin4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '1111'
+			  END AS bin5	  
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '1111'
+			  END AS bin6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '4'
+			  END AS term1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '4'
+			  END AS term2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '4'
+			  END AS term3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '4'
+			  END AS term4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '4'
+			  END AS term5
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '4'
+			  END AS term6
+			FROM max_stacks ms
+		LEFT JOIN td_row r ON r.BLOCK_ID = ms.block_id
+		--ORDER BY 
+		--	ms.name
+	), blocks_and_rows AS (
+		SELECT
+			btp.block_id
+			, Btp.block_name
+			, btp.row_id
+			, btp.row_name
+			, btp.num_tiers
+			, btp.max_stacks
+			, substr(bin1 || bin2 || bin3 || bin4 || bin5 || bin6,1,btp.max_stacks) AS flags
+			, btp.term1 + btp.term2 + btp.term3 + btp.term4 + btp.term5 + btp.term6 AS num_stacks
+		FROM blob_to_bin_pieces btp
+	), blocks_rows_stack_indexes (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, num_stacks, stack_index) AS (
+		SELECT 
+			bnr.block_id
+			, bnr.block_name
+			, bnr.row_id
+			, bnr.row_name
+			, bnr.num_tiers
+			, bnr.max_stacks
+			, bnr.flags
+			, bnr.num_stacks
+			, 0 AS stack_index
+		FROM blocks_and_rows bnr
+		UNION ALL
+		SELECT
+			block_id
+			, block_name
+			, row_id
+			, row_name
+			, num_tiers
+			, max_stacks
+			, flags
+			, num_stacks
+			, stack_index + 1
+		FROM blocks_rows_stack_indexes
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT 
+			brsi.*
+			, substr (brsi.flags,brsi.stack_index+1,1) AS stack_flag
+		FROM blocks_rows_stack_indexes brsi
+/*		ORDER BY 
+			brsi.block_name
+			, brsi.row_name
+			, brsi.stack_index
+*/	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+    ), deleted_fine_spots AS (
+		SELECT 
+			brst.block_id
+			, brst.row_id
+			, brst.stack_index
+			, brst.tier_index
+		--	count(*)
+		/*	brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		*/FROM blocks_rows_stacks_tiers brst
+		WHERE
+			brst.stack_flag = '0'
+		/*ORDER BY 
+			brst.block_id
+			, brst.row_id
+			, brst.stack_index
+			, brst.tier_index*/
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), unavailable_fine_spots AS (
+		SELECT 
+			DISTINCT block_id, row_id, stack_index, tier_index
+		FROM (
+			SELECT block_id, row_id, stack_index, tier_index FROM deleted_fine_spots
+			UNION 
+			SELECT block_id, row_id, stack_index, tier_index FROM disabled_fine_spots
+		) combined_results
+	)
+SELECT count(*) FROM unavailable_fine_spots --10891 IN MIT UAT
 ;
 
-SELECT SUBSTR('hello', LEVEL, 1) AS character
-FROM dual
-CONNECT BY LEVEL <= LENGTH('hello');
+--De-hacking the BLOB to binary string conversion
+WITH 
+	stacks_mask AS (
+		SELECT
+			tr.id
+			, RAWTOHEX(DBMS_LOB.SUBSTR(tr.STACKS_MASK , 64, 1)) AS blobby
+		FROM td_row tr
+		LEFT JOIN td_block b ON b.id = tr.block_id
+		WHERE NOT(b.TYPE = '4') --NO heaps
+		--FETCH FIRST 2 ROWs only
+	), parsed_double_bytes (id, char_index, double_byte, blobby) AS (
+		SELECT
+			id
+			, 3 AS char_index
+			, substr (blobby,1,2) AS double_byte
+			, blobby
+		FROM stacks_mask sm
+		UNION ALL 
+		SELECT
+			id
+			, char_index + 2 AS char_index
+			, substr (blobby,char_index,2) AS double_byte
+			, blobby
+		FROM parsed_double_bytes
+		WHERE char_index < LENGTH (blobby)
+	), ordered_double_bytes AS (
+		SELECT
+			id
+			, char_index - 2 AS char_index
+			, substr (double_byte,2,1) || SUBSTR (double_byte,1,1) AS ordered_double_byte
+		FROM parsed_double_bytes
+		ORDER BY id, char_index
+	), ordered_blob AS (
+		SELECT
+			id
+			, listagg (ordered_double_byte) WITHIN GROUP (ORDER BY char_index) AS ordered_blobby
+		FROM ordered_double_bytes
+		GROUP BY id
+	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
+		SELECT
+			id
+			, 2 AS char_index
+			, substr (ordered_blobby,1,1) AS hex
+			, ordered_blobby
+		FROM ordered_blob
+		UNION ALL 
+		SELECT 
+			id 
+			, char_index + 1 AS char_index
+			, substr (ordered_blobby,char_index,1) AS hex
+			, ordered_blobby
+		FROM parsed_hexes_rec
+		WHERE char_index < length(ordered_blobby) + 1
+	), parsed_hexes AS ( 
+		SELECT 
+			id 
+			, char_index - 1 AS char_index
+			, Hex 
+		FROM parsed_hexes_rec
+		ORDER BY id, char_index
+	), hex_to_bin AS (	
+		SELECT 
+			id,
+			char_index,
+			hex,
+			CASE 
+				WHEN hex = '0' THEN '0000'
+				WHEN hex = '1' THEN '1000'
+				WHEN hex = '2' THEN '0100'
+				WHEN hex = '3' THEN '1100'
+				WHEN hex = '4' THEN '0010'
+				WHEN hex = '5' THEN '1010'
+				WHEN hex = '6' THEN '0110'
+				WHEN hex = '7' THEN '1110'
+				WHEN hex = '8' THEN '0001'
+				WHEN hex = '9' THEN '1001'
+				WHEN hex = 'A' THEN '0101'
+				WHEN hex = 'B' THEN '1101'
+				WHEN hex = 'C' THEN '0011'
+				WHEN hex = 'D' THEN '1011'
+				WHEN hex = 'E' THEN '0111'
+				WHEN hex = 'F' THEN '1111'
+			END AS binstr
+		FROM parsed_hexes
+	), binstr AS (
+		SELECT
+			id,
+			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
+		FROM hex_to_bin htb
+		GROUP BY id
+	), max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), flags AS (
+		SELECT 
+			bs.id AS row_id
+			, substr (bs.binary_string,0,ms.max_stacks) AS flags
+		FROM binstr bs
+		LEFT JOIN td_row r ON r.id = bs.id
+		LEFT JOIN td_block b ON b.id = r.block_id
+		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
+		SELECT 
+			flags.row_id
+			, flags.flags
+			, 2 AS ch_index
+			, to_number(substr (flags,1,1)) AS stack_incr
+		FROM flags
+		UNION ALL
+		SELECT 
+			row_id
+			, flags
+			, ch_index + 1 AS ch_index
+			, TO_NUMBER(SUBSTR(flags,ch_index,1)) AS stack_incr
+		FROM stack_increments
+		WHERE ch_index < LENGTH (flags) + 1
+	), num_stacks AS (
+		SELECT 
+			si.row_id
+			, sum(si.stack_incr) AS num_stacks
+		FROM stack_increments si
+		GROUP BY si.row_id, si.flags
+	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
+		SELECT 
+			ms.block_id
+			, r.id AS row_id
+			, 0 AS stack_index
+			, ms.max_stacks
+		FROM max_stacks ms
+		LEFT JOIN td_row r ON r.block_id = ms.block_id
+		UNION ALL 
+		SELECT 
+			block_id
+			, row_id
+			, stack_index + 1 AS stack_index
+			, max_stacks
+		FROM indexed_stacks
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT
+			ist.block_id
+			, b.name AS block_name
+			, ist.row_id
+			, r.name AS row_name
+			, r.num_tiers
+			, ist.max_stacks
+			, flags.flags
+			, ns.num_stacks
+			, ist.stack_index
+			, substr(flags.flags,ist.stack_index+1,1) AS stack_flag
+		FROM indexed_stacks ist
+		LEFT JOIN flags ON flags.ROW_id = ist.row_id
+		LEFT JOIN td_block b ON b.id = ist.block_id
+		LEFT JOIN td_row r ON r.id = ist.row_id
+		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+		ORDER BY b.name, r.name, ist.stack_index	
+	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+	)
+SELECT
+	brst.block_id
+	, brst.block_name
+	, brst.row_id
+	, brst.row_name
+	, brst.num_tiers
+	, brst.max_stacks
+	, brst.flags
+	, brst.stack_flag
+	, brst.stack_index
+	, brst.tier_index
+FROM blocks_rows_stacks_tiers brst
+ORDER BY
+	brst.block_name
+	, brst.row_name
+	, brst.stack_index
+	, brst.tier_index
+; --just need TO count deleted AND disabled spaces now USING the de-hackified query
 
-SELECT SUBSTR('hello', LEVEL, 1) AS character
-FROM dual
-CONNECT BY LEVEL <= LENGTH('hello');
-
-select level, substr('Stefano', level, 1) /* a substring starting from level-th character, 1 character log */
-from dual
-connect by level <= length('Stefano') /* the same number of rows than the length of the string */
-
-SELECT 'your_string' AS repeated_string
-FROM dual
-CONNECT BY LEVEL <= LENGTH('your_string');
-
+WITH 
+	max_stacks AS (
+		SELECT 
+			tsn.block_id
+			, b.name AS block_name
+			, count(*) AS max_stacks --22 IS the largest value FOR MIT UAT, 22 digits OF bin IS six digits OF hex (5.5)
+		FROM TD_STACK_NAME tsn 
+		LEFT JOIN td_block b ON b.id = tsn.block_id
+		WHERE 
+			NOT (b.TYPE = '4') -- NO heaps
+		GROUP BY 
+			tsn.block_id
+			, b.name
+	), blob_to_bin_pieces AS (
+		SELECT 
+			ms.*
+			, r.ID AS row_id
+			, r.NAME AS row_name
+			, r.num_tiers
+		--	, (trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2 AS num_hex_chars
+		--	, SUBSTR(RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,(trunc(ms.max_stacks / 8) + CEIL(MOD(ms.max_stacks,8)/8)) * 2) AS STACKS_MASK 
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) AS hex1
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) AS hex2
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) AS hex3
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) AS hex4
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) AS hex5
+			, substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) AS hex6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '1111'
+			  END AS bin1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '1111'
+			  END AS bin2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '1111'
+			  END AS bin3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '1111'
+			  END AS bin4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '1111'
+			  END AS bin5	  
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1000'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '0100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '1100'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '0010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '1010'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '0110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '1110'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '0001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '1001'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '0101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '1101'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '0011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '1011'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '0111'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '1111'
+			  END AS bin6
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),2,1) = 'F' THEN '4'
+			  END AS term1
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),1,1) = 'F' THEN '4'
+			  END AS term2
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),4,1) = 'F' THEN '4'
+			  END AS term3
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),3,1) = 'F' THEN '4'
+			  END AS term4
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),6,1) = 'F' THEN '4'
+			  END AS term5
+			, CASE 
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) IS NULL THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '0' THEN '0'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '1' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '2' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '3' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '4' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '5' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '6' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '7' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '8' THEN '1'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = '9' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'A' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'B' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'C' THEN '2'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'D' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'E' THEN '3'
+				WHEN substr (RAWTOHEX(DBMS_LOB.SUBSTR(STACKS_MASK , 64, 1)),5,1) = 'F' THEN '4'
+			  END AS term6
+			FROM max_stacks ms
+		LEFT JOIN td_row r ON r.BLOCK_ID = ms.block_id
+		--ORDER BY 
+		--	ms.name
+	), blocks_and_rows AS (
+		SELECT
+			btp.block_id
+			, Btp.block_name
+			, btp.row_id
+			, btp.row_name
+			, btp.num_tiers
+			, btp.max_stacks
+			, substr(bin1 || bin2 || bin3 || bin4 || bin5 || bin6,1,btp.max_stacks) AS flags
+			, btp.term1 + btp.term2 + btp.term3 + btp.term4 + btp.term5 + btp.term6 AS num_stacks
+		FROM blob_to_bin_pieces btp
+	), blocks_rows_stack_indexes (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, num_stacks, stack_index) AS (
+		SELECT 
+			bnr.block_id
+			, bnr.block_name
+			, bnr.row_id
+			, bnr.row_name
+			, bnr.num_tiers
+			, bnr.max_stacks
+			, bnr.flags
+			, bnr.num_stacks
+			, 0 AS stack_index
+		FROM blocks_and_rows bnr
+		UNION ALL
+		SELECT
+			block_id
+			, block_name
+			, row_id
+			, row_name
+			, num_tiers
+			, max_stacks
+			, flags
+			, num_stacks
+			, stack_index + 1
+		FROM blocks_rows_stack_indexes
+		WHERE stack_index < max_stacks - 1
+	), blocks_rows_stacks AS (
+		SELECT 
+			brsi.*
+			, substr (brsi.flags,brsi.stack_index+1,1) AS stack_flag
+		FROM blocks_rows_stack_indexes brsi
+/*		ORDER BY 
+			brsi.block_name
+			, brsi.row_name
+			, brsi.stack_index
+*/	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, flags, stack_flag, stack_index, tier_index) AS (
+        SELECT 
+        	brs.block_id
+        	, brs.block_name
+        	, brs.row_id
+        	, brs.row_name
+        	, brs.num_tiers
+        	, brs.max_stacks
+        	, brs.flags
+        	, brs.stack_flag
+        	, brs.stack_index
+        	, 1 AS tier_index 
+        FROM blocks_rows_stacks brs
+        UNION ALL
+        SELECT 
+        	brst.block_id
+        	, brst.block_name
+        	, brst.row_id
+        	, brst.row_name
+        	, brst.num_tiers
+        	, brst.max_stacks
+        	, brst.flags
+        	, brst.stack_flag
+        	, brst.stack_index
+			, brst.tier_index + 1
+		FROM blocks_rows_stacks_tiers brst 
+        WHERE tier_index < num_tiers
+    ), deleted_fine_spots AS (
+		SELECT 
+			brst.block_id
+			, brst.row_id
+			, brst.stack_index
+			, brst.tier_index
+		--	count(*)
+		/*	brst.block_id
+			, brst.block_name
+			, brst.row_id
+			, brst.row_name
+			, brst.num_tiers
+			, brst.max_stacks
+			, brst.flags
+			, brst.stack_flag
+			, brst.stack_index
+			, brst.tier_index
+		*/FROM blocks_rows_stacks_tiers brst
+		WHERE
+			brst.stack_flag = '0'
+		/*ORDER BY 
+			brst.block_id
+			, brst.row_id
+			, brst.stack_index
+			, brst.tier_index*/
+	), disabled_space_entries AS (
+		SELECT 
+			ys.id
+			, ys.BLOCK_ID 
+			, tb.name AS block_name
+			, ys.START_ROW_ID
+			, tr.name AS start_row_name
+			, tr.row_index AS start_row_index
+			, ys.STOP_ROW_ID 
+			, tr2.name AS stop_row_name
+			, tr2.row_index AS stop_row_index
+			, ys.START_STACK 
+			, tsn.CUSTOM_NAME AS start_stack_name
+			, ys.STOP_STACK 
+			, tsn2.CUSTOM_NAME AS stop_stack_name
+			, ys.NUM_TIERS AS disabled_tiers
+		FROM YPDISABLED_SPACE ys 
+		LEFT JOIN TD_BLOCK tb ON tb.Id = ys.BLOCK_ID 
+		LEFT JOIN td_row tr ON tr.id = ys.START_ROW_ID 
+		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
+		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
+		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
+		WHERE 
+			NOT (ys.TYPE = '2') 
+	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			start_row_index AS row_index 
+        FROM disabled_space_entries
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index + 1
+		FROM expanded_rows 
+        WHERE row_index < stop_row_index
+	), added_num_tiers AS (
+		SELECT 
+			er.*
+			, tr.num_tiers AS tiers_in_row
+		FROM expanded_rows er
+		LEFT JOIN td_row tr ON er.block_id = tr.block_id AND er.row_index = tr.row_index
+	), expanded_stacks (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, start_stack AS stack_index
+        FROM added_num_tiers
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index + 1
+		FROM expanded_stacks 
+        WHERE stack_index < stop_stack
+	), expanded_tiers (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, 
+			row_index, tiers_in_row, stack_index, tier_index) AS (
+        SELECT 
+        	id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tiers_in_row AS tier_index
+        FROM expanded_stacks
+        UNION ALL
+        SELECT 
+			id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
+			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers,
+			row_index, tiers_in_row, stack_index, tier_index - 1
+		FROM expanded_tiers 
+        WHERE tier_index > tiers_in_row - disabled_tiers + 1
+	), disabled_fine_spots AS (
+		SELECT 
+			et.block_id
+			, tr.id AS row_id
+			, et.stack_index
+			, et.tier_index
+		FROM expanded_tiers et
+		LEFT JOIN td_row tr ON tr.block_id = et.block_id AND tr.row_index = et.row_index
+		ORDER BY 
+			block_id
+			, row_id
+			, stack_index
+			, tier_index
+	), unavailable_fine_spots AS (
+		SELECT 
+			DISTINCT block_id, row_id, stack_index, tier_index
+		FROM (
+			SELECT block_id, row_id, stack_index, tier_index FROM deleted_fine_spots
+			UNION 
+			SELECT block_id, row_id, stack_index, tier_index FROM disabled_fine_spots
+		) combined_results
+	)
+SELECT count(*) FROM unavailable_fine_spots --10891 IN MIT UAT
+;
