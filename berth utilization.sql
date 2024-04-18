@@ -2412,6 +2412,9 @@ ORDER BY
  */
 
 --Just need the vessel visits now
+--The berth utilizations are very high with this method
+--I'm not sure what's wrong. They're high by around a factor of 2.
+--I will try an equivalent approach formulated a different way.
 WITH 
 	arrivals AS (
 		SELECT 
@@ -2430,6 +2433,8 @@ WITH
 				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
 				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
 			)
+		ORDER BY 
+			COALESCE (vv.ata,vv.eta)
 	), departures AS (
 		SELECT 
 			vv.VSL_ID 
@@ -2466,38 +2471,131 @@ WITH
 			, dep.iter
 		FROM departures dep
 		ORDER BY event_time
-	)
-SELECT 
-	e.vsl_id
-	, e.in_voy_nbr
-	, e.out_voy_nbr
-	, e.event_time
-	, e.event
-	, e.iter
-	, sum(iter) OVER (ORDER BY e.event_time) AS berthed
-	, nvl((lead(e.event_time,1) OVER (ORDER BY e.event_time) - e.event_time) * 24,0) AS duration_hrs
-FROM events e
-ORDER BY 
-	e.event_time
-;
-
-
-
-, berthed_vessels (vsl_id, in_voy_nbr, out_voy_nbr, event_time, event, berthed) AS (
+	), utilizations AS (
 		SELECT 
 			e.vsl_id
 			, e.in_voy_nbr
 			, e.out_voy_nbr
-			, e.event_time
-			, e.event
-			, 1 AS berthed
+			, e.event_time AS start_event
+			, lead(e.event_time,1) OVER (ORDER BY e.event_time) AS end_event
+			, e.iter
+			, sum(iter) OVER (ORDER BY e.event_time) AS berthed
+			, nvl((lead(e.event_time,1) OVER (ORDER BY e.event_time) - e.event_time) * 24,0) AS duration_hrs
+			, sum(iter) OVER (ORDER BY e.event_time) * nvl((lead(e.event_time,1) OVER (ORDER BY e.event_time) - e.event_time) * 24,0) AS berth_used
+			, least(100,sum(iter) OVER (ORDER BY e.event_time) / 3 * 100) AS berth_util
 		FROM events e
-		UNION ALL 
+		ORDER BY 
+			e.event_time
+	), 	month_boundaries AS (
+	    SELECT
+	        TRUNC(TO_DATE('01-'||to_char(mod(LEVEL-1,12)+1)||'-'||TO_CHAR(2022 + trunc((LEVEL-1)/12)), 'DD-MM-YYYY'), 'MM') AS month_start
+	        , TRUNC(TO_DATE('01-'||to_char(MOD(LEVEL,12)+1)||'-'||TO_CHAR(2022 + trunc((LEVEL)/12)), 'DD-MM-YYYY'), 'MM') AS month_end
+	    FROM
+	        DUAL
+	    CONNECT BY
+	        LEVEL <= 24 -- 12 months for 2022 and 12 months for 2023
+	), days_in_month AS (
+		  SELECT 1 AS mnth, 31 AS days FROM dual UNION ALL
+		  SELECT 2, 28 FROM dual UNION ALL
+		  SELECT 3, 31 FROM dual UNION ALL 
+		  SELECT 4, 30 FROM dual UNION ALL 
+		  SELECT 5, 31 FROM dual UNION ALL 
+		  SELECT 6, 30 FROM dual UNION ALL 
+		  SELECT 7, 31 FROM dual UNION ALL 
+		  SELECT 8, 31 FROM dual UNION ALL 
+		  SELECT 9, 30 FROM dual UNION ALL 
+		  SELECT 10, 31 FROM dual UNION ALL 
+		  SELECT 11, 30 FROM dual UNION ALL 
+		  SELECT 12, 31 FROM dual
+	), berth_util_by_berth_event AS (
 		SELECT 
-			bv.vsl_id
-			, bv.in_voy_nbr
-			, bv.out_voy_nbr
-			, bv.event_time
-			, bv.event
-			, 
+			EXTRACT (YEAR FROM mb.month_start) AS YEAR 
+			, EXTRACT (MONTH FROM mb.month_start) AS MONTH 
+			, greatest (mb.month_start,u.start_event) AS start_time
+			, least (mb.month_end,u.end_event) AS end_time
+			, (least (mb.month_end,u.end_event) - greatest (mb.month_start,u.start_event)) * 24 AS event_hours
+			, u.berthed
+			, (least (mb.month_end,u.end_event) - greatest (mb.month_start,u.start_event)) * 24 * u.berthed AS berth_used
+			, dim.days * 24 * 3 AS berth_capacity
+			, (least (mb.month_end,u.end_event) - greatest (mb.month_start,u.start_event)) / dim.days * u.berthed / 3 * 100 AS berth_util
+		FROM month_boundaries mb
+		LEFT JOIN utilizations u ON 
+			u.start_event < mb.month_end and u.end_event > mb.month_start
+		LEFT JOIN days_in_month dim ON 
+			EXTRACT (MONTH FROM mb.month_start) = dim.mnth
+		ORDER BY 
+			u.start_event
 	)
+SELECT 
+	bu.YEAR
+	, bu.MONTH
+	, sum(bu.berth_util) AS berth_util
+FROM berth_util_by_berth_event bu
+GROUP BY
+	bu.YEAR
+	, bu.month
+ORDER BY 
+	bu.YEAR
+	, bu.MONTH 
+;
+
+--I get the similar values this way. They only differ because I assign the entire duration of the vessel visit
+--to the month when the vessel departs instead of splitting the duration between the months like I did above.
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.ata, vv.eta) AS arrival_time
+			, COALESCE (vv.atd, vv.etd) AS departure_time
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta)) * 24 AS duration_hours
+		FROM vessel_visits vv
+		WHERE 
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			)
+		ORDER BY 
+			COALESCE (vv.atd,vv.etd)
+	), days_in_month AS (
+		  SELECT 1 AS mnth, 31 AS days FROM dual UNION ALL
+		  SELECT 2, 28 FROM dual UNION ALL
+		  SELECT 3, 31 FROM dual UNION ALL 
+		  SELECT 4, 30 FROM dual UNION ALL 
+		  SELECT 5, 31 FROM dual UNION ALL 
+		  SELECT 6, 30 FROM dual UNION ALL 
+		  SELECT 7, 31 FROM dual UNION ALL 
+		  SELECT 8, 31 FROM dual UNION ALL 
+		  SELECT 9, 30 FROM dual UNION ALL 
+		  SELECT 10, 31 FROM dual UNION ALL 
+		  SELECT 11, 30 FROM dual UNION ALL 
+		  SELECT 12, 31 FROM dual
+	), periods AS (
+		SELECT 
+			2022 + trunc((LEVEL-1)/12) AS YEAR
+			, mod(LEVEL-1,12)+1 AS MONTH
+		FROM dual
+		CONNECT BY 
+			LEVEL <= 24
+	)
+SELECT 
+	p.YEAR
+	, p.MONTH
+	, sum(vvoi.duration_hours) / 3 / dim.days / 24 * 100 AS berth_util
+FROM periods p
+LEFT JOIN days_in_month dim ON dim.mnth = p.MONTH
+LEFT JOIN vessel_visits_of_interest vvoi ON 
+	EXTRACT (YEAR FROM vvoi.departure_time) = p.YEAR
+	AND EXTRACT (MONTH FROM vvoi.departure_time) = p.MONTH 
+GROUP BY 
+	p.YEAR
+	, p.MONTH
+	, dim.days
+ORDER BY 
+	p.YEAR 
+	, p.MONTH
+;
