@@ -2400,3 +2400,104 @@ ORDER BY
 	EXTRACT (YEAR FROM bu.atd)
 	, dim.mnth
 ;
+
+/*
+ * ZLO communicated that they consider their berth to be divided into 3 modules. 
+ * Further, it doesn't matter if a canoe is berthed or an aircraft carrier, the 
+ * vessel occupies 1 module. This removes the distance unit from berth utilization. 
+ * If three vessels are berth, the berth is 100% utilized. Now I just need to 
+ * integrate that over real time, which in practice means using the ATAs and ATDs 
+ * to determine how many ships are berthed simultaneously and when they arrive 
+ * and depart.
+ */
+
+--Just need the vessel visits now
+WITH 
+	arrivals AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.ata, vv.eta) AS event_time
+			, 'Arrival' AS event
+			, 1 AS iter
+		FROM vessel_visits vv
+		WHERE 
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			)
+	), departures AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, COALESCE (vv.atd, vv.etd) AS event_time
+			, 'Departure' AS event
+			, -1 AS iter
+		FROM vessel_visits vv
+		WHERE 
+			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
+				(	vv.atd IS NOT NULL OR 
+					vv.atd IS NULL AND vv.berth IS NOT null) AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			)
+	), events AS (
+		SELECT 
+			arr.vsl_id
+			, arr.in_voy_nbr
+			, arr.out_voy_nbr
+			, arr.event_time
+			, arr.event
+			, arr.iter
+		FROM arrivals arr
+		UNION ALL 
+		SELECT 
+			dep.vsl_id
+			, dep.in_voy_nbr
+			, dep.out_voy_nbr
+			, dep.event_time
+			, dep.event
+			, dep.iter
+		FROM departures dep
+		ORDER BY event_time
+	)
+SELECT 
+	e.vsl_id
+	, e.in_voy_nbr
+	, e.out_voy_nbr
+	, e.event_time
+	, e.event
+	, e.iter
+	, sum(iter) OVER (ORDER BY e.event_time) AS berthed
+	, nvl((lead(e.event_time,1) OVER (ORDER BY e.event_time) - e.event_time) * 24,0) AS duration_hrs
+FROM events e
+ORDER BY 
+	e.event_time
+;
+
+
+
+, berthed_vessels (vsl_id, in_voy_nbr, out_voy_nbr, event_time, event, berthed) AS (
+		SELECT 
+			e.vsl_id
+			, e.in_voy_nbr
+			, e.out_voy_nbr
+			, e.event_time
+			, e.event
+			, 1 AS berthed
+		FROM events e
+		UNION ALL 
+		SELECT 
+			bv.vsl_id
+			, bv.in_voy_nbr
+			, bv.out_voy_nbr
+			, bv.event_time
+			, bv.event
+			, 
+	)
