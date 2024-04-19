@@ -4106,12 +4106,14 @@ WITH
 			, char_index - 2 AS char_index
 			, substr (double_byte,2,1) || SUBSTR (double_byte,1,1) AS ordered_double_byte
 		FROM parsed_double_bytes
+--		WHERE id = '519877485'
 		ORDER BY id, char_index
 	), ordered_blob AS (
 		SELECT
 			id
 			, listagg (ordered_double_byte) WITHIN GROUP (ORDER BY char_index) AS ordered_blobby
 		FROM ordered_double_bytes
+--		WHERE id = '519877485'
 		GROUP BY id
 	), parsed_hexes_rec (id, char_index, hex, ordered_blobby) AS (
 		SELECT
@@ -4134,6 +4136,7 @@ WITH
 			, char_index - 1 AS char_index
 			, Hex 
 		FROM parsed_hexes_rec
+--		WHERE id = '519877485'
 		ORDER BY id, char_index
 	), hex_to_bin AS (	
 		SELECT 
@@ -4159,11 +4162,13 @@ WITH
 				WHEN hex = 'F' THEN '1111'
 			END AS binstr
 		FROM parsed_hexes
+--		WHERE id = '519877485'
 	), binstr AS (
 		SELECT
 			id,
 			listagg (htb.binstr) WITHIN GROUP (ORDER BY char_index) AS binary_string
 		FROM hex_to_bin htb
+--		WHERE id = '519877485'
 		GROUP BY id
 	), max_stacks AS (
 		SELECT 
@@ -4185,6 +4190,7 @@ WITH
 		LEFT JOIN td_row r ON r.id = bs.id
 		LEFT JOIN td_block b ON b.id = r.block_id
 		LEFT JOIN max_stacks ms ON ms.block_id = b.id
+--		WHERE bs.id = '519877485'
 	), stack_increments (row_id, flags, ch_index, stack_incr) AS (
 		SELECT 
 			flags.row_id
@@ -4205,6 +4211,7 @@ WITH
 			si.row_id
 			, sum(si.stack_incr) AS num_stacks
 		FROM stack_increments si
+--		WHERE si.row_id = '519877485'
 		GROUP BY si.row_id, si.flags
 	), indexed_stacks (block_id, row_id, stack_index, max_stacks) AS (
 		SELECT 
@@ -4239,6 +4246,7 @@ WITH
 		LEFT JOIN td_block b ON b.id = ist.block_id
 		LEFT JOIN td_row r ON r.id = ist.row_id
 		LEFT JOIN num_stacks ns ON ns.ROW_id = ist.ROW_id
+--		WHERE ist.row_id = '519877485'
 		ORDER BY b.name, r.name, ist.stack_index	
 	), blocks_rows_stacks_tiers (block_id, block_name, row_id, row_name, num_tiers, max_stacks, num_stacks, flags, stack_flag, stack_index, tier_index) AS (
         SELECT 
@@ -4283,6 +4291,7 @@ WITH
 			, brst.stack_index
 			, brst.tier_index
 		FROM blocks_rows_stacks_tiers brst
+--		WHERE brst.row_id = '519877485'
 		ORDER BY
 			brst.block_name
 			, brst.row_name
@@ -4310,8 +4319,8 @@ WITH
 		LEFT JOIN td_row tr2 ON tr2.id = ys.stop_row_id 
 		LEFT JOIN TD_STACK_NAME tsn ON tsn.BLOCK_ID = tb.id AND tsn.STACK_INDEX = ys.START_STACK 
 		LEFT JOIN TD_STACK_NAME tsn2 ON tsn2.BLOCK_ID = tb.id AND tsn2.STACK_INDEX = ys.STOP_STACK
-		WHERE 
-			NOT (ys.TYPE = '2') 
+--		WHERE 
+--			NOT (ys.TYPE = '2') 
 	), expanded_rows (id, block_id, block_name, start_row_id, start_row_name, start_row_index, 
 			stop_row_id, stop_row_name, stop_row_index, start_stack, start_stack_name, stop_stack, stop_stack_name, disabled_tiers, row_index) AS (
         SELECT 
@@ -4417,6 +4426,7 @@ WITH
 			   END AS avail_status
 		FROM disabled_joined dj
 		JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+--		WHERE dj.row_id = '519877485'
 		ORDER BY 
 			dj.block_name
 			, dj.row_name
@@ -4425,11 +4435,36 @@ WITH
 	)
 SELECT 
 	ym.block_name
-	, count(*) AS TEUs
+	, count(DISTINCT ym.row_id) AS max_rows
+	, ym.max_stacks_for_block AS max_stacks
+	, avg(ym.max_tiers_for_row) AS avg_tiers
+	, count(avail_status) AS total
+	, sum(
+			CASE 
+				WHEN ym.deletion_status = 'Deleted' THEN 1
+				ELSE 0
+			END
+		 ) AS deletions
+	, sum(
+		CASE 
+			WHEN ym.disabled_status = 'Disabled' THEN 1
+			ELSE 0
+		END
+	 ) AS disablings
+	, sum(
+			CASE 
+				WHEN ym.avail_status = 'Unavailable' THEN 1
+				ELSE 0
+			END
+		 ) AS unavailable
+	, sum(
+			CASE 
+				WHEN ym.avail_status = 'Available' THEN 1
+				ELSE 0
+			END
+		 ) AS available
 FROM yard_model ym
-WHERE ym.avail_status = 'Available'
-GROUP BY 
-	ym.block_name
-ORDER BY 
-	ym.block_name
+GROUP BY ym.block_name, ym.max_stacks_for_block
+ORDER BY ym.block_name
 ;
+
