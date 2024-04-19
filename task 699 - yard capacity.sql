@@ -4390,36 +4390,46 @@ WITH
 			AND ym.row_id = dis.row_id
 			AND ym.stack_index = dis.stack_index
 			AND ym.tier_index = dis.tier_index
+	), yard_model AS (
+		SELECT 
+			dj.block_id
+			, dj.row_id
+			, dj.stack_index
+			, dj.block_name
+			, dj.row_name
+			, tsn.CUSTOM_NAME
+			, dj.tier_index
+			, dj.max_stacks AS max_stacks_for_block
+			, dj.num_stacks AS num_stacks_for_row
+			, dj.flags AS stack_flags_for_row
+			, dj.num_tiers AS max_tiers_for_row
+			, CASE 
+				WHEN dj.stack_flag = '1' THEN 'Available'
+				WHEN dj.stack_flag = '0' THEN 'Deleted'
+			  END AS deletion_status
+			, CASE 
+				WHEN dj.disabled_block_space IS NULL THEN 'Available'
+				WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
+			  END AS disabled_status
+			 , CASE 
+			 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
+			 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
+			   END AS avail_status
+		FROM disabled_joined dj
+		JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+		ORDER BY 
+			dj.block_name
+			, dj.row_name
+			, dj. stack_index
+			, dj.tier_index
 	)
 SELECT 
-	dj.block_id
-	, dj.row_id
-	, dj.stack_index
-	, dj.block_name
-	, dj.row_name
-	, tsn.CUSTOM_NAME
-	, dj.tier_index
-	, dj.max_stacks AS max_stacks_for_block
-	, dj.num_stacks AS num_stacks_for_row
-	, dj.flags AS stack_flags_for_row
-	, dj.num_tiers AS max_tiers_for_row
-	, CASE 
-		WHEN dj.stack_flag = '1' THEN 'Available'
-		WHEN dj.stack_flag = '0' THEN 'Deleted'
-	  END AS deletion_status
-	, CASE 
-		WHEN dj.disabled_block_space IS NULL THEN 'Available'
-		WHEN dj.disabled_block_space IS NOT NULL THEN 'Disabled'
-	  END AS disabled_status
-	 , CASE 
-	 	WHEN dj.stack_flag = '1' AND dj.disabled_block_space IS NULL THEN 'Available'
-	 	WHEN dj.stack_flag = '0' OR dj.disabled_block_space IS NOT NULL THEN 'Unavailable'
-	   END AS avail_status
-FROM disabled_joined dj
-JOIN td_stack_name tsn ON tsn.block_id = dj.block_id AND tsn.stack_index = dj.stack_index
+	ym.block_name
+	, count(*) AS TEUs
+FROM yard_model ym
+WHERE ym.avail_status = 'Available'
+GROUP BY 
+	ym.block_name
 ORDER BY 
-	dj.block_name
-	, dj.row_name
-	, dj. stack_index
-	, dj.tier_index
+	ym.block_name
 ;
