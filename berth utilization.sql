@@ -2547,18 +2547,26 @@ WITH
 			vv.VSL_ID 
 			, vv.IN_VOY_NBR 
 			, vv.OUT_VOY_NBR 
+			, vv.comments
+			, substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1) AS docked_meter
+			, CASE 
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 449 THEN 1
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 858 THEN 2
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 1328 THEN 3
+				ELSE 4
+			  END AS module
 			, COALESCE (vv.ata, vv.eta) AS arrival_time
 			, COALESCE (vv.atd, vv.etd) AS departure_time
 			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta)) * 24 AS duration_hours
 		FROM vessel_visits vv
 		WHERE 
-			( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
-				 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) AND 
-				(	vv.atd IS NOT NULL OR 
-					vv.atd IS NULL AND vv.berth IS NOT null) AND 
-				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
-				COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
-			)
+			(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 
+			 OR EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022)
+			AND (	vv.atd IS NOT NULL OR 
+				vv.atd IS NULL AND vv.berth IS NOT null) AND 
+			COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+			COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			AND vv.comments IS NOT NULL 			
 		ORDER BY 
 			COALESCE (vv.atd,vv.etd)
 	), days_in_month AS (
@@ -2585,7 +2593,12 @@ WITH
 SELECT 
 	p.YEAR
 	, p.MONTH
-	, sum(vvoi.duration_hours) / 3 / dim.days / 24 * 100 AS berth_util
+	, count(*) AS "Calls"
+	, sum(vvoi.duration_hours) / 3 / dim.days / 24 * 100 AS Total
+	, sum (CASE WHEN vvoi.module = '1' THEN vvoi.duration_hours ELSE 0 END) / dim.days / 24 * 100 AS Module_1 
+	, sum (CASE WHEN vvoi.module = '2' THEN vvoi.duration_hours ELSE 0 END) / dim.days / 24 * 100 AS Module_2 
+	, sum (CASE WHEN vvoi.module = '3' THEN vvoi.duration_hours ELSE 0 END) / dim.days / 24 * 100 AS Module_3 
+	, sum (CASE WHEN vvoi.module = '4' THEN vvoi.duration_hours ELSE 0 END) / dim.days / 24 * 100 AS "Remainder" 
 FROM periods p
 LEFT JOIN days_in_month dim ON dim.mnth = p.MONTH
 LEFT JOIN vessel_visits_of_interest vvoi ON 
@@ -2596,6 +2609,46 @@ GROUP BY
 	, p.MONTH
 	, dim.days
 ORDER BY 
-	p.YEAR 
+	p.YEAR DESC 
 	, p.MONTH
+;
+
+--Looking at one month
+WITH 
+	vessel_visits_of_interest AS (
+		SELECT 
+			vv.VSL_ID 
+			, vv.IN_VOY_NBR 
+			, vv.OUT_VOY_NBR 
+			, vv.comments
+			, substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1) AS docked_meter
+			, CASE 
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 499 THEN 1
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 858 THEN 2
+				WHEN to_number (substr (vv.comments, instr (vv.comments, '{') + 1, instr (vv.comments, '|') - instr (vv.comments, '{') - 1)) < 1328 THEN 3
+				ELSE 4
+			  END AS module
+			, COALESCE (vv.ata, vv.eta) AS arrival_time
+			, COALESCE (vv.atd, vv.etd) AS departure_time
+			, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta)) * 24 AS duration_hours
+		FROM vessel_visits vv
+		WHERE 
+			EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 AND 
+			EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 1
+			AND (	vv.atd IS NOT NULL OR 
+				vv.atd IS NULL AND vv.berth IS NOT null) AND 
+			COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
+			COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+			AND vv.comments IS NOT NULL 			
+		ORDER BY 
+			COALESCE (vv.atd,vv.etd)
+	)
+SELECT
+	module
+	, sum (duration_hours)
+	, 31 * 24 AS capacity
+	, sum (duration_hours) / 31 / 24 AS util
+FROM vessel_visits_of_interest vvoi
+GROUP BY 
+	module
 ;
