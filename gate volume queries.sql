@@ -923,39 +923,122 @@ SELECT
 	ORDER BY EXTRACT (YEAR FROM gt.created), EXTRACT (MONTH FROM gt.created)
 ;
 
--- Works for PCT, TAM, T5
-WITH 
-	date_series AS (
-	  SELECT
-	    TO_DATE('2021-01-30', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
-	  FROM dual
-	  CONNECT BY TO_DATE('2021-01-30', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2024-01-26', 'YYYY-MM-DD')
-	), weeks AS (
-		SELECT 
-			trunc(DATE_in_series) AS DAY
-			, ROW_NUMBER() OVER (ORDER BY date_in_series) AS enum
-			, trunc(6 + (ROW_NUMBER() OVER (ORDER BY date_in_series) - 1) / 7) AS PMA_week
-		FROM date_series
-	)
+-- Works for TAM
 SELECT 
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+	, count(*)
+From gate_transactions gt 
+WHERE 
+	gt.tran_status = 'EIR'  
+	AND (gt.wtask_id = '1FULLOUT' OR gt.WTASK_ID = 'BOOKOUT' OR gt.WTASK_ID = 'BOOKOUTB'  
+			OR gt.WTASK_ID = 'CHSIN' OR gt.WTASK_ID = 'CHSINB' OR gt.wtask_id = 'CHSOUT'
+			OR gt.WTASK_ID = 'FULLIN' OR gt.WTASK_ID = 'FULLINB' OR gt.WTASK_ID = 'FULLINO' OR gt.WTASK_ID = 'FULLOUT' OR gt.WTASK_ID = 'FULLOUTB'
+			OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR GT.WTASK_ID = 'MTINO' OR  gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB'
+			OR gt.wtask_id = 'POOLOUT'
+			OR gt.WTASK_ID = 'REPOOUT' OR gt.WTASK_ID = 'REPOOUTB'
+			OR GT.WTASK_ID = 'RAILIN' OR GT.WTASK_ID = 'RAILOUT' OR gt.wtask_id = 'RDRAYIN'
+			OR GT.WTASK_ID = 'RFULLIN' OR GT.WTASK_ID = 'RFULLOUT' 
+			OR GT.WTASK_ID = 'RMTIN' OR GT.WTASK_ID = 'RMTOUT'
+			OR gt.wtask_id = 'TRUCKOUT')
+GROUP BY 
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+ORDER BY
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+;
+
+-- T5 again
+SELECT 
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+	, count(*)
+From gate_transactions gt 
+WHERE 
+	gt.tran_status = 'EIR'  
+	AND (gt.wtask_id = '1FULLOUT' OR gt.WTASK_ID = 'BOOKOUT' OR gt.WTASK_ID = 'BOOKOUTB'  
+			OR gt.WTASK_ID = 'CHSIN' OR gt.WTASK_ID = 'CHSINB' OR gt.wtask_id = 'CHSOUT'
+			OR gt.WTASK_ID = 'FULLIN' OR gt.WTASK_ID = 'FULLINB' OR gt.WTASK_ID = 'FULLINO' OR gt.WTASK_ID = 'FULLOUT' OR gt.WTASK_ID = 'FULLOUTB'
+			OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR GT.WTASK_ID = 'MTINO' OR  gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB'
+			OR gt.wtask_id = 'POOLOUT'
+			OR gt.WTASK_ID = 'REPOOUT' OR gt.WTASK_ID = 'REPOOUTB'
+			OR GT.WTASK_ID = 'RAILIN' OR GT.WTASK_ID = 'RAILOUT' OR gt.wtask_id = 'RDRAYIN'
+			OR GT.WTASK_ID = 'RFULLIN' OR GT.WTASK_ID = 'RFULLOUT' 
+			OR GT.WTASK_ID = 'RMTIN' OR GT.WTASK_ID = 'RMTOUT'
+			OR gt.wtask_id = 'TRUCKOUT')
+GROUP BY 
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+ORDER BY
+	EXTRACT (YEAR FROM gt.created)
+	, EXTRACT (MONTH FROM gt.created)
+;
+
+WITH  
+date_series AS (
+	SELECT
+		TO_DATE('2022-01-01', 'YYYY-MM-DD') + LEVEL - 1 AS date_in_series
+	FROM
+		dual
+	CONNECT BY
+		TO_DATE('2022-01-01', 'YYYY-MM-DD') + LEVEL - 1 <= to_date('2023-01-27', 'YYYY-MM-DD') 
+	)
+, weeks AS (
+	SELECT
+		trunc(DATE_in_series) AS DAY 
+	,
+		ROW_NUMBER() OVER (
+		ORDER BY date_in_series) AS enum 
+	,
+		trunc(1 + (ROW_NUMBER() OVER (ORDER BY date_in_series) - 1) / 7) AS PMA_week
+	FROM
+		date_series 
+) 
+SELECT  
+	weeks.PMA_week 
+	,
+	TRUNC(MIN(weeks.day)) AS start_day 
+	,
+	trunc(max(weeks.day)) AS end_day 
+	,
+	COALESCE (count(gt.tran_status),0) AS Volume
+FROM
+	weeks
+LEFT JOIN gate_transactions gt ON 
+	trunc(weeks.day) = trunc(gt.created)
+	AND  
+	trunc(gt.created) BETWEEN TO_DATE('2022-01-01', 'YYYY-MM-DD') AND to_date('2023-01-27', 'YYYY-MM-DD')
+	AND gt.tran_status = 'EIR'
+	AND (gt.wtask_id = '1FULLOUT'
+		OR gt.WTASK_ID = 'BOOKOUT'
+		OR gt.WTASK_ID = 'BOOKOUTB'
+		OR gt.WTASK_ID = 'CHSIN'
+		OR gt.WTASK_ID = 'CHSINB'
+		OR gt.wtask_id = 'CHSOUT'
+		OR gt.WTASK_ID = 'FULLIN'
+		OR gt.WTASK_ID = 'FULLINB'
+		OR gt.WTASK_ID = 'FULLINO'
+		OR gt.WTASK_ID = 'FULLOUT'
+		OR gt.WTASK_ID = 'FULLOUTB'
+		OR gt.WTASK_ID = 'MTIN'
+		OR gt.WTASK_ID = 'MTINB'
+		OR GT.WTASK_ID = 'MTINO'
+		OR gt.WTASK_ID = 'MTOUT'
+		OR gt.WTASK_ID = 'MTOUTB'
+		OR gt.wtask_id = 'POOLOUT'
+		OR gt.WTASK_ID = 'REPOOUT'
+		OR gt.WTASK_ID = 'REPOOUTB'
+		OR GT.WTASK_ID = 'RAILIN'
+		OR GT.WTASK_ID = 'RAILOUT'
+		OR gt.wtask_id = 'RDRAYIN'
+		OR GT.WTASK_ID = 'RFULLIN'
+		OR GT.WTASK_ID = 'RFULLOUT'
+		OR GT.WTASK_ID = 'RMTIN'
+		OR GT.WTASK_ID = 'RMTOUT'
+		OR gt.wtask_id = 'TRUCKOUT')
+GROUP BY
 	weeks.PMA_week
-	, TRUNC(MIN(weeks.day)) AS start_day
-	, trunc(max(weeks.day)) AS end_day
-	, COALESCE (count(gt.tran_status), 0) AS Volume
-FROM weeks
-JOIN gate_transactions gt ON trunc(weeks.day) = trunc(gt.created) AND 
-		trunc(gt.created) BETWEEN TO_DATE('2021-01-30', 'YYYY-MM-DD') AND to_date('2024-01-26', 'YYYY-MM-DD') 
-		AND gt.tran_status = 'EIR'  
-		AND (gt.wtask_id = '1FULLOUT' OR gt.WTASK_ID = 'BOOKOUT' OR gt.WTASK_ID = 'BOOKOUTB'  
-				OR gt.WTASK_ID = 'CHSIN' OR gt.WTASK_ID = 'CHSINB' OR gt.wtask_id = 'CHSOUT'
-				OR gt.WTASK_ID = 'FULLIN' OR gt.WTASK_ID = 'FULLINB' OR gt.WTASK_ID = 'FULLINO' OR gt.WTASK_ID = 'FULLOUT' OR gt.WTASK_ID = 'FULLOUTB'
-				OR gt.WTASK_ID = 'MTIN' OR gt.WTASK_ID = 'MTINB' OR GT.WTASK_ID = 'MTINO' OR  gt.WTASK_ID = 'MTOUT' OR gt.WTASK_ID = 'MTOUTB'
-				OR gt.wtask_id = 'POOLOUT'
-				OR gt.WTASK_ID = 'REPOOUT' OR gt.WTASK_ID = 'REPOOUTB'
-				OR GT.WTASK_ID = 'RAILIN' OR GT.WTASK_ID = 'RAILOUT' OR gt.wtask_id = 'RDRAYIN'
-				OR GT.WTASK_ID = 'RFULLIN' OR GT.WTASK_ID = 'RFULLOUT' 
-				OR GT.WTASK_ID = 'RMTIN' OR GT.WTASK_ID = 'RMTOUT'
-				OR gt.wtask_id = 'TRUCKOUT')
-GROUP BY weeks.PMA_week
-ORDER BY weeks.pma_week
+ORDER BY
+	weeks.pma_week
 ;
