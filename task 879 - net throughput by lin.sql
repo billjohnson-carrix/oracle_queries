@@ -1,6 +1,16 @@
 --Starting with MIT UAT
---Basic throughput query, still needs to be broken down by line
---Query to count moves by exports, imports, and transships 
+SELECT
+	line_id
+	, count(*)
+FROM equipment_history 
+WHERE 
+	EXTRACT(YEAR FROM posted) = 2023
+	AND EXTRACT(MONTH FROM posted) < 10
+	AND NOT EXTRACT (MONTH FROM posted) = 3
+	AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+GROUP BY line_id
+ORDER BY 2 DESC;
+	
 SELECT
 	EXTRACT(YEAR FROM posted) AS YEAR
 	, EXTRACT(MONTH FROM posted) AS MONTH
@@ -40,11 +50,13 @@ SELECT
 	, sum (
 		CASE 
 			WHEN line_id = 'ONE' THEN 1
+			WHEN line_id = 'NYK' THEN 1
+			WHEN line_id = 'MOL' THEN 1
 			ELSE 0
 		END) AS ONE
 	, sum (
 		CASE 
-			WHEN NOT (line_id IN ('CHQ','CMD','COS','OOL','HLC','MAE','SEA','SUD','MSC','ONE','SEB')) THEN 1
+			WHEN NOT (line_id IN ('CHQ','CMD','COS','OOL','HLC','MAE','SEA','SUD','MSC','ONE','SEB','NYK','MOL')) THEN 1
 			ELSE 0
 		END) AS OTHERS
 	, sum (
@@ -65,3 +77,59 @@ ORDER BY
 	EXTRACT(YEAR FROM posted)
 	, EXTRACT(MONTH FROM posted)
 ; 
+
+-- Switching to ZLO UAT 2
+SELECT
+	line_id
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 1 THEN 1 ELSE 0 END) AS Jan_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 2 THEN 1 ELSE 0 END) AS Feb_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 3 THEN 1 ELSE 0 END) AS Mar_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 4 THEN 1 ELSE 0 END) AS Apr_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 5 THEN 1 ELSE 0 END) AS May_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 6 THEN 1 ELSE 0 END) AS Jun_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 7 THEN 1 ELSE 0 END) AS Jul_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 8 THEN 1 ELSE 0 END) AS Aug_23
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) <= 8 THEN 1 ELSE 0 END) AS total
+FROM equipment_history 
+WHERE 
+	EXTRACT(YEAR FROM posted) = 2023
+	AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+GROUP BY line_id
+ORDER BY 10 DESC;
+
+SELECT
+	line_id
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 1 THEN 1 ELSE 0 END) AS Jan_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 2 THEN 1 ELSE 0 END) AS Feb_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 3 THEN 1 ELSE 0 END) AS Mar_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 4 THEN 1 ELSE 0 END) AS Apr_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 5 THEN 1 ELSE 0 END) AS May_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 6 THEN 1 ELSE 0 END) AS Jun_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 7 THEN 1 ELSE 0 END) AS Jul_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 8 THEN 1 ELSE 0 END) AS Aug_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 9 THEN 1 ELSE 0 END) AS Sep_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 10 THEN 1 ELSE 0 END) AS Oct_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 11 THEN 1 ELSE 0 END) AS Nov_22
+	, sum (CASE WHEN EXTRACT (MONTH FROM posted) = 12 THEN 1 ELSE 0 END) AS Dec_22
+	, count(*) AS total
+FROM equipment_history 
+WHERE 
+	EXTRACT(YEAR FROM posted) = 2022
+	AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+GROUP BY line_id
+ORDER BY 14 DESC
+;
+
+--Switching to PAM UAT
+--Good data from Mar 2021 through Mar 2023
+ SELECT
+	line_id
+	, count(*)
+FROM equipment_history 
+WHERE 
+	(	(EXTRACT(YEAR FROM posted) = 2021 AND EXTRACT (MONTH FROM posted) >= 3)
+	 OR (EXTRACT (YEAR FROM posted) = 2022)
+	 OR (EXTRACT (YEAR FROM posted) = 2023 AND EXTRACT (MONTH FROM posted) <=3))
+	AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+GROUP BY line_id
+ORDER BY 2 DESC;
