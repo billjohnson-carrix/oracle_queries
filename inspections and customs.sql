@@ -54,3 +54,4 @@ SELECT
 FROM equipment_constraint_history ech
 WHERE ech.cnstr_gkey = '5260394'
 ;
+
