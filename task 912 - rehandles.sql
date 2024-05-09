@@ -2,25 +2,25 @@ SELECT * FROM terminal_events ORDER BY id;
 
 WITH periods AS (
 	SELECT 
-		2021 + trunc((LEVEL + 1)/12) AS YEAR
-		, mod(LEVEL + 1,12)+1 AS MONTH
+		2022 + trunc((LEVEL - 1)/12) AS YEAR
+		, mod(LEVEL - 1,12)+1 AS MONTH
 	FROM dual
 	CONNECT BY 
-		LEVEL <= 26
+		LEVEL <= 24
 ),
 eh_summary AS (
 	SELECT 
 		EXTRACT (YEAR FROM eh.posted) AS year
 		, EXTRACT (MONTH FROM eh.posted) AS month
-		, sum (CASE WHEN eh.wtask_id IN ('REHCC') THEN 1 ELSE 0 END) AS required_c2c
-		, sum (CASE WHEN eh.wtask_id IN ('REHCCT') THEN 1 ELSE 0 END) AS convenience_c2c
-		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT') THEN 1 ELSE 0 END) AS total_c2c
-		, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHDC') THEN 1 ELSE 0 END) AS required_cdc
-		, sum (CASE WHEN eh.wtask_id IN ('REHCDT','REHDCT') THEN 1 ELSE 0 END) AS convenience_cdc
-		, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHCDT','REHDC','REHDCT') THEN 1 ELSE 0 END) AS total_cdc
-		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCD','REHDC') THEN 1 ELSE 0 END) AS total_required
-		, sum (CASE WHEN eh.wtask_id IN ('REHCCT','REHCDT','REHDCT') THEN 1 ELSE 0 END) AS total_convenience
-		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT') THEN 1 ELSE 0 END) AS TOTAL	
+		, sum (CASE WHEN eh.wtask_id IN ('REHCC') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS required_c2c
+		, sum (CASE WHEN eh.wtask_id IN ('REHCCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS convenience_c2c
+		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS total_c2c
+		, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHDC') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS required_cdc
+		, sum (CASE WHEN eh.wtask_id IN ('REHCDT','REHDCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS convenience_cdc
+		, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHCDT','REHDC','REHDCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS total_cdc
+		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCD','REHDC') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS total_required
+		, sum (CASE WHEN eh.wtask_id IN ('REHCCT','REHCDT','REHDCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS total_convenience
+		, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT') AND eh.removed IS NULL THEN 1 ELSE 0 END) AS TOTAL	
 	FROM equipment_history eh 
 	WHERE 
 		eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT')
