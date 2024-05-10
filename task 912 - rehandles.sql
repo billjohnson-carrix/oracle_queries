@@ -55,6 +55,16 @@ ORDER BY
 	, per.month
 ;
 
+SELECT
+	wtask_id
+	, count(*)
+FROM equipment_History eh
+WHERE 
+	eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT')
+	AND eh.vsl_id = 'POLMEX' AND (eh.voy_nbr = '301S' OR eh.voy_nbr = '301N')
+GROUP BY eh.wtask_id
+;
+
 SELECT 
 	eh.eq_nbr
 	, count(*)
