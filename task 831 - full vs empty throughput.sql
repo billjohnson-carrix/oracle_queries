@@ -12,6 +12,57 @@ WHERE
 GROUP BY EXTRACT(MONTH FROM posted)  
 ORDER BY EXTRACT(MONTH FROM posted); 
 
+WITH aggregating_by_vessel AS (
+	SELECT
+		vv.vsl_id
+		, vv.in_voy_nbr
+		, vv.out_voy_nbr
+		, least (COALESCE (vv.atd,vv.etd),max(eh.posted)) AS dt
+		, eh.status
+		, count(*) AS moves
+	FROM equipment_history  eh
+	LEFT JOIN vessel_visits vv ON 
+		vv.vsl_id = eh.vsl_id
+		AND (vv.in_voy_nbr = eh.voy_nbr OR vv.out_voy_nbr = eh.voy_nbr)
+	WHERE --Giving an extra MONTH TO either side USING eh.posted
+		((EXTRACT (YEAR FROM eh.posted) = 2022 AND EXTRACT (MONTH FROM eh.posted) = 12)
+			OR EXTRACT (YEAR FROM eh.posted) = 2023
+			OR (EXTRACT (YEAR FROM eh.posted) = 2024 AND EXTRACT (MONTH FROM eh.posted) = 1))
+		AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+	GROUP BY
+		vv.vsl_id
+		, vv.in_voy_nbr
+		, vv.out_voy_nbr
+		, vv.atd
+		, vv.etd
+		, eh.status
+	ORDER BY 
+		vv.vsl_id
+		, vv.in_voy_nbr
+		, vv.out_voy_nbr
+		, vv.atd
+		, vv.etd
+		, eh.status
+), assigned_to_calendar_month AS (
+	SELECT
+		EXTRACT (YEAR FROM abv.dt) AS YEAR
+		, EXTRACT (MONTH FROM abv.dt) AS MONTH 
+		, abv.status
+		, count(*) AS calls
+		, sum (abv.moves) AS moves
+	FROM aggregating_by_vessel abv
+	WHERE 
+		EXTRACT (YEAR FROM abv.dt) = 2023
+	GROUP BY 
+		EXTRACT (YEAR FROM abv.dt)
+		, EXTRACT (MONTH FROM abv.dt)
+		, abv.status
+	ORDER BY 
+		EXTRACT (YEAR FROM abv.dt)
+		, EXTRACT (MONTH FROM abv.dt) 
+)
+SELECT * FROM assigned_to_calendar_month;
+
 --Switching to PCT Mar '22 - Dec '23
 select  
 	EXTRACT (YEAR FROM posted) AS year
@@ -854,9 +905,9 @@ WITH aggregating_by_vessel AS (
 		vv.vsl_id = eh.vsl_id
 		AND (vv.in_voy_nbr = eh.voy_nbr OR vv.out_voy_nbr = eh.voy_nbr)
 	WHERE --Giving an extra MONTH TO either side USING eh.posted
-		((EXTRACT (YEAR FROM eh.posted) = 2021 AND EXTRACT (MONTH FROM eh.posted) >= 3)
-			OR EXTRACT (YEAR FROM eh.posted) = 2022
-			OR (EXTRACT (YEAR FROM eh.posted) = 2023 AND EXTRACT (MONTH FROM eh.posted) <= 5))
+		((EXTRACT (YEAR FROM eh.posted) = 2021 AND EXTRACT (MONTH FROM eh.posted) = 12)
+			OR EXTRACT (YEAR FROM eh.posted) = 2022 OR EXTRACT (YEAR FROM eh.posted) = 2023
+			OR (EXTRACT (YEAR FROM eh.posted) = 2024 AND EXTRACT (MONTH FROM eh.posted) = 1))
 		AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
 	GROUP BY
 		vv.vsl_id
@@ -872,7 +923,7 @@ WITH aggregating_by_vessel AS (
 		, vv.atd
 		, vv.etd
 		, eh.status
-), assigned_to_fiscal_month AS (
+), assigned_to_calendar_month AS (
 	SELECT
 		EXTRACT (YEAR FROM abv.dt) AS YEAR
 		, EXTRACT (MONTH FROM abv.dt) AS MONTH 
@@ -891,4 +942,4 @@ WITH aggregating_by_vessel AS (
 		EXTRACT (YEAR FROM abv.dt)
 		, EXTRACT (MONTH FROM abv.dt) 
 )
-SELECT * FROM assigned_to_fiscal_month;
+SELECT * FROM assigned_to_calendar_month;
