@@ -943,3 +943,6 @@ WITH aggregating_by_vessel AS (
 		, EXTRACT (MONTH FROM abv.dt) 
 )
 SELECT * FROM assigned_to_calendar_month;
+
+
+
