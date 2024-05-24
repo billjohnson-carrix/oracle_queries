@@ -32,5 +32,6 @@ ORDER BY EXTRACT (MONTH FROM eh.posted)
 SELECT 
 	*
 FROM vessel_visits vv
-WHERE vv.vsl_id = 'POLCHIL' AND (vv.in_voy_nbr = '325N' OR vv.out_voy_nbr = '325N')
+WHERE vv.vsl_id = 'MSCVIRG' AND (vv.in_voy_nbr = '233R' OR vv.out_voy_nbr = '233R')
 ;
+
