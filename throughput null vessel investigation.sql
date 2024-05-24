@@ -35,3 +35,19 @@ FROM vessel_visits vv
 WHERE vv.vsl_id = 'MSCVIRG' AND (vv.in_voy_nbr = '233R' OR vv.out_voy_nbr = '233R')
 ;
 
+SELECT * FROM vessel_visits WHERE berth = '6';
+
+SELECT 
+	EXTRACT (YEAR FROM vv.etd) AS year
+	, EXTRACT (MONTH FROM vv.etd) AS month
+	, count(*) AS calls
+FROM vessel_visits vv
+GROUP BY
+	EXTRACT (YEAR FROM vv.etd)
+	, EXTRACT (MONTH FROM vv.etd)
+ORDER BY 
+	EXTRACT (YEAR FROM vv.etd)
+	
+
+	, EXTRACT (MONTH FROM vv.etd)
+;
