@@ -34,3 +34,21 @@ WITH gate_events AS (
 		and eh.eq_class = 'CTR'
 )
 SELECT EXTRACT (MONTH FROM posted) AS month, count(*) FROM gate_records GROUP BY EXTRACT (MONTH FROM posted);
+
+--Switching to SMITCO
+WITH gate_events AS (
+	select te.id
+	from terminal_events te
+	where 
+		te.event_group in ( 'GATE')
+		and te.required is not null	
+), gate_records AS (
+	select *
+	from equipment_history eh
+	where 
+		EXTRACT (YEAR FROM eh.posted) = 2023
+		and eh.removed is null
+		and eh.wtask_id in (SELECT id FROM gate_events)
+		and eh.eq_class = 'CTR'
+)
+SELECT EXTRACT (MONTH FROM posted) AS month, count(*) FROM gate_records GROUP BY EXTRACT (MONTH FROM posted) ORDER BY EXTRACT (MONTH FROM posted);
