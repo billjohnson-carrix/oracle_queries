@@ -51,4 +51,9 @@ WITH gate_events AS (
 		and eh.wtask_id in (SELECT id FROM gate_events)
 		and eh.eq_class = 'CTR'
 )
-SELECT EXTRACT (MONTH FROM posted) AS month, count(*) FROM gate_records GROUP BY EXTRACT (MONTH FROM posted) ORDER BY EXTRACT (MONTH FROM posted);
+SELECT 
+	EXTRACT (MONTH FROM posted) AS MONTH
+	, count(*) 
+FROM gate_records 
+GROUP BY EXTRACT (MONTH FROM posted) 
+ORDER BY EXTRACT (MONTH FROM posted);
