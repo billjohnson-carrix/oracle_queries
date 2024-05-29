@@ -51,3 +51,20 @@ ORDER BY
 
 	, EXTRACT (MONTH FROM vv.etd)
 ;
+
+--Checking net throughput at PROD at the terminals
+select 
+	EXTRACT (YEAR FROM eh.posted) AS year
+	, EXTRACT (MONTH FROM eh.posted) AS month
+    , count(*) as moves
+from equipment_history eh 
+where  
+    eh.wtask_id IN ('LOAD','UNLOAD')
+    and EXTRACT (YEAR FROM eh.posted) in ('2022','2023')
+group by 
+	EXTRACT (YEAR FROM eh.posted)
+	, EXTRACT (MONTH FROM eh.posted)
+order by 
+	EXTRACT (YEAR FROM eh.posted)
+	, EXTRACT (MONTH FROM eh.posted)
+;
