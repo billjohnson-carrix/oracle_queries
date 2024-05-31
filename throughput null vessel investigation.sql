@@ -47,8 +47,6 @@ GROUP BY
 	, EXTRACT (MONTH FROM vv.etd)
 ORDER BY 
 	EXTRACT (YEAR FROM vv.etd)
-	
-
 	, EXTRACT (MONTH FROM vv.etd)
 ;
 
@@ -68,3 +66,8 @@ order by
 	EXTRACT (YEAR FROM eh.posted)
 	, EXTRACT (MONTH FROM eh.posted)
 ;
+
+
+
+
+
