@@ -63,11 +63,61 @@ group by
 	EXTRACT (YEAR FROM eh.posted)
 	, EXTRACT (MONTH FROM eh.posted)
 order by 
-	EXTRACT (YEAR FROM eh.posted)
-	, EXTRACT (MONTH FROM eh.posted)
+	year
+	, month
 ;
 
-
-
-
-
+--Union with the archive table
+select 
+    year,
+    month,
+    sum(moves) as moves
+from (
+    select 
+        EXTRACT (YEAR FROM eh.posted) AS year,
+        EXTRACT (MONTH FROM eh.posted) AS month,
+        count(*) as moves
+    from equipment_history eh 
+    where  
+        eh.wtask_id IN ('LOAD','UNLOAD')
+        and EXTRACT (YEAR FROM eh.posted) in (2022, 2023)
+    group by 
+        EXTRACT (YEAR FROM eh.posted),
+        EXTRACT (MONTH FROM eh.posted)
+    UNION ALL 
+    select 
+        EXTRACT (YEAR FROM eha.posted) AS year,
+        EXTRACT (MONTH FROM eha.posted) AS month,
+        count(*) as moves
+    from equipment_history_arc eha 
+    where  
+        eha.wtask_id IN ('LOAD','UNLOAD')
+        and EXTRACT (YEAR FROM eha.posted) in (2022, 2023)
+    group by 
+        EXTRACT (YEAR FROM eha.posted),
+        EXTRACT (MONTH FROM eha.posted)
+)
+group by 
+    year,
+    month
+order by 
+    year,
+    month;
+   
+--Query for Galen's spreadsheet
+SELECT
+	to_char(trunc(eh.posted, 'MM'),'MM/DD/YYYY') AS analysis_month
+	, 'ZLO' AS terminal_key
+	, count(*) AS ntt_total_moves
+	, sum (CASE WHEN eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 end) AS ntt_total_imports
+	, sum (CASE WHEN eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_exports
+	, sum (CASE WHEN (eh.wtask_id = 'UNLOAD' OR eh.wtask_id = 'LOAD') AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_transships
+	, 'Oracle' AS Platform
+FROM equipment_history eh
+WHERE 
+	(EXTRACT (YEAR FROM eh.posted) = 2023
+	 OR EXTRACT (YEAR FROM eh.posted) = 2024)
+	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+GROUP BY trunc(eh.posted, 'MM')
+ORDER BY trunc(eh.posted, 'MM')
+;
