@@ -107,7 +107,7 @@ order by
 --Query for Galen's spreadsheet
 SELECT
 	to_char(trunc(eh.posted, 'MM'),'MM/DD/YYYY') AS analysis_month
-	, 'ZLO' AS terminal_key
+	, 'MIT' AS terminal_key
 	, count(*) AS ntt_total_moves
 	, sum (CASE WHEN eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 end) AS ntt_total_imports
 	, sum (CASE WHEN eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_exports
