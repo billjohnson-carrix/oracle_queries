@@ -83,24 +83,15 @@ SELECT
 	, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
 FROM vessel_visits vv
 WHERE 
-	( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
-		 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022)
-		 --AND vv.vsl_id = 'MADRID'
-		 --AND 
-/*		(	vv.atd IS NOT NULL OR 
-			(vv.atd IS NULL AND vv.berth IS NOT NULL)) AND 
-		COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
-		COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
-*/	)
-		ORDER BY 
-			5
+	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+	 (EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2024 AND EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) <= 2)) 
+	AND (vv.atd IS NOT NULL OR 
+		(vv.atd IS NULL AND vv.berth IS NOT NULL)) 
+	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 
+	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+ORDER BY 
+	5
 ;
 
-SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'MADRID' AND vv.in_voy_nbr = '09E' AND 	( 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
-		 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2022) --AND 
-/*		(	vv.atd IS NOT NULL OR 
-			(vv.atd IS NULL AND vv.berth IS NOT NULL)) AND 
-		COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 AND 
-		COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
-*/	);
-SELECT count(*), min(eh.posted) FROM equipment_history eh WHERE eh.vsl_id = 'MADRID' AND (eh.voy_nbr = '09E' OR eh.voy_nbr = '09E');
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'SALOME' AND vv.in_voy_nbr = '302X';
+SELECT count(*), min(eh.posted), max(eh.posted) FROM equipment_history eh WHERE eh.vsl_id = 'SALOME' AND (eh.voy_nbr = '302X' OR eh.voy_nbr = '302B');
