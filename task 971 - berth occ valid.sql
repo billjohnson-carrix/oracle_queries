@@ -75,23 +75,74 @@ ORDER BY
 
 --Cutting query down for validating berth occupancy
 SELECT
-	vv.VSL_ID 
+	count(*)
+/*	vv.VSL_ID 
 	, vv.IN_VOY_NBR 
 	, vv.OUT_VOY_NBR 
+	, vv.berth
 	, COALESCE (vv.ata, vv.eta) AS at
 	, COALESCE (vv.atd, vv.etd) AS dt
 	, (COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24 AS StayHours
-FROM vessel_visits vv
+*/FROM vessel_visits vv
 WHERE 
 	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
 	 (EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2024 AND EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) <= 2)) 
+	AND (vv.atd IS NOT NULL OR (vv.atd IS NULL AND vv.berth IS NOT NULL))
+	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 
+	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+--ORDER BY 
+--	5
+;
+
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'MAHAWEL' AND vv.in_voy_nbr = '017W';
+SELECT count(*), min(eh.posted), max(eh.posted) FROM equipment_history eh WHERE eh.vsl_id = 'SALOME' AND (eh.voy_nbr = '302X' OR eh.voy_nbr = '302B');
+
+--Aggregating for berth occupancy validation
+SELECT
+	to_char(trunc(COALESCE (vv.atd,vv.etd), 'MM'),'MM/DD/YYYY') AS analysis_month
+	, 'C60' AS terminal_key
+	, sum ((COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24) AS berth_occupancy_simple_hours
+	, 'Oracle' AS platform
+FROM vessel_visits vv
+WHERE 
+	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
+	 (EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2024 AND EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) <= 4)) 
 	AND (vv.atd IS NOT NULL OR 
 		(vv.atd IS NULL AND vv.berth IS NOT NULL)) 
 	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 
 	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+GROUP BY 
+	EXTRACT (YEAR FROM COALESCE(vv.atd, vv.etd))
+	, EXTRACT (MONTH FROM COALESCE(vv.atd, vv.etd))
+	, to_char(trunc(COALESCE (vv.atd,vv.etd), 'MM'),'MM/DD/YYYY')
 ORDER BY 
-	5
+	EXTRACT (YEAR FROM COALESCE(vv.atd, vv.etd))
+	, EXTRACT (MONTH FROM COALESCE(vv.atd, vv.etd))
 ;
 
-SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'SALOME' AND vv.in_voy_nbr = '302X';
-SELECT count(*), min(eh.posted), max(eh.posted) FROM equipment_history eh WHERE eh.vsl_id = 'SALOME' AND (eh.voy_nbr = '302X' OR eh.voy_nbr = '302B');
+SELECT 
+	eh.*
+FROM vessel_visits vv 
+JOIN equipment_history eh ON 
+	eh.vsl_id = vv.vsl_id
+	AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
+WHERE 
+	vv.vsl_id = 'MAHAWEL' 
+	AND vv.in_voy_nbr = '017W'
+	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD') 
+ORDER BY 
+	eh.crane_no
+	, eh.posted
+;
+
+SELECT
+	*
+FROM equipment_history eh
+WHERE
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+	AND (eh.crane_no = '7' OR eh.crane_no = '8')
+	AND eh.posted BETWEEN to_timestamp ('2023-01-04 07:11:03.000','YYYY-MM-DD HH24:MI:SS.FF3') AND to_timestamp ('2023-01-04 15:29:42.000','YYYY-MM-DD HH24:MI:SS.FF3')
+ORDER BY 
+	eh.crane_no
+	, eh.posted
+;
