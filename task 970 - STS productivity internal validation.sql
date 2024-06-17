@@ -90,7 +90,7 @@ WITH vessel_visits_of_interest AS (
 		, vv.gross_hours
 		, vv.net_hours
 	FROM vessel_visits vv
-	WHERE EXTRACT (YEAR FROM vv.atd) IN ('2022','2023')
+	WHERE EXTRACT (YEAR FROM vv.atd) IN ('2023','2024')
 	--ORDER BY vv.atd, vv.vsl_id, vv.in_voy_nbr
 ), noisy_components_by_move AS (
 	SELECT
@@ -151,6 +151,8 @@ ORDER BY
 ;
 
 --Replicating Joseph's crane worktime approach
+--I don't understand what I was doing here. We need a join between vv and eh.
+--I continue with another attempt below.
 WITH crane_move_batches AS (
 	SELECT
 		eh.vsl_id
@@ -249,3 +251,146 @@ ORDER BY
 	eh.crane_no
 	, eh.posted
 ;
+
+SELECT 
+	eh.*
+FROM vessel_visits vv 
+JOIN equipment_history eh ON 
+	eh.vsl_id = vv.vsl_id
+	AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
+WHERE 
+	vv.vsl_id = 'MAHAWEL' 
+	AND vv.in_voy_nbr = '017W'
+	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD') 
+ORDER BY 
+	eh.crane_no
+	, eh.posted
+;
+
+SELECT
+	*
+FROM equipment_history eh
+WHERE
+	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+	AND (eh.crane_no = '7' OR eh.crane_no = '8')
+	AND eh.posted BETWEEN to_timestamp ('2023-01-04 07:11:03.000','YYYY-MM-DD HH24:MI:SS.FF3') AND to_timestamp ('2023-01-04 15:29:42.000','YYYY-MM-DD HH24:MI:SS.FF3')
+ORDER BY 
+	eh.crane_no
+	, eh.posted
+;
+
+--Next attempt at replicating Joseph's worktime algorithm
+--Query for internal validation
+WITH vessel_visits_of_interest AS (
+	SELECT
+		vv.vsl_id
+		, vv.in_voy_nbr
+		, vv.out_voy_nbr
+		, vv.eta
+		, vv.ata
+		, vv.etd
+		, vv.atd
+		, vv.gross_hours
+		, vv.net_hours
+	FROM vessel_visits vv
+	WHERE 
+		EXTRACT (YEAR FROM vv.atd) IN ('2023','2024')
+		AND (vv.atd IS NOT NULL OR 
+				(vv.atd IS NULL AND vv.berth IS NOT NULL)) 
+		AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10
+		AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) > 0
+--	ORDER BY vv.atd, vv.vsl_id, vv.in_voy_nbr
+), vvoi_and_moves AS (
+	SELECT
+		vvoi.*
+		, eh.crane_no
+		, eh.posted AS move_start
+		, lead (eh.posted) OVER (PARTITION BY eh.crane_no ORDER BY eh.posted ASC) AS move_end
+		, greatest(0,(least (lead (eh.posted) OVER (PARTITION BY eh.crane_no ORDER BY eh.posted ASC), coalesce(vvoi.atd,vvoi.etd))
+			- greatest(eh.posted,COALESCE(vvoi.ata,vvoi.eta)))) * 24 AS move_hours
+	FROM vessel_visits_of_interest vvoi
+	JOIN equipment_history eh ON
+		vvoi.vsl_id = eh.vsl_id
+		AND (vvoi.in_voy_nbr = eh.voy_nbr OR vvoi.out_voy_nbr = eh.voy_nbr)
+		--AND eh.posted BETWEEN coalesce(vvoi.ata,vvoi.eta) AND coalesce(vvoi.atd, vvoi.etd)
+		AND eh.wtask_id IN ('LOAD','UNLOAD','REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT')
+--	ORDER BY COALESCE(vvoi.atd,vvoi.etd), vvoi.vsl_id, vvoi.in_voy_nbr, eh.crane_no, eh.posted
+), wt_by_crane AS (
+	SELECT 
+		vm.vsl_id
+		, vm.in_voy_nbr
+		, vm.out_voy_nbr
+		, vm.eta
+		, vm.ata
+		, vm.etd
+		, vm.atd
+		, vm.gross_hours
+		, vm.net_hours
+		, vm.crane_no
+		, count(*) AS moves
+		, sum(vm.move_hours) AS worktimes
+	FROM vvoi_and_moves vm
+	GROUP BY 
+		vm.vsl_id
+		, vm.in_voy_nbr
+		, vm.out_voy_nbr
+		, vm.eta
+		, vm.ata
+		, vm.etd
+		, vm.atd
+		, vm.gross_hours
+		, vm.net_hours
+		, vm.crane_no
+/*	ORDER BY
+		coalesce(vm.atd,vm.etd)
+		, vm.vsl_id
+		, vm.crane_no
+*/), gmph_components AS (
+SELECT
+	wt.vsl_id
+	, wt.in_voy_nbr
+	, wt.out_voy_nbr
+	, wt.eta
+	, wt.ata
+	, wt.etd
+	, wt.atd
+	, wt.gross_hours
+	, wt.net_hours
+	, sum(wt.moves) AS moves
+	, sum (CASE WHEN wt.crane_no IS NOT NULL THEN wt.worktimes ELSE 0 END) AS total_crane_working_hours
+FROM wt_by_crane wt
+GROUP BY 
+		wt.vsl_id
+		, wt.in_voy_nbr
+		, wt.out_voy_nbr
+		, wt.eta
+		, wt.ata
+		, wt.etd
+		, wt.atd
+		, wt.gross_hours
+		, wt.net_hours
+/*	ORDER BY
+		coalesce(wt.atd,wt.etd)
+		, wt.vsl_id
+*/)
+SELECT
+	to_char(trunc(COALESCE (gc.atd,gc.etd), 'MM'),'MM/DD/YYYY') AS analysis_month
+	, 'ZLO' AS terminal_key
+	, sum(gc.moves) AS total_moves
+	, sum(gc.total_crane_working_hours) AS s2s_total_crane_working_hours
+	, CASE WHEN sum(gc.total_crane_working_hours) = 0 THEN NULL ELSE sum(gc.moves) / sum(gc.total_crane_working_hours) END AS gmph
+	, CASE WHEN sum(gc.gross_hours) = 0 THEN NULL ELSE sum(gc.moves) / sum(gc.gross_hours) END AS GROSS
+	, CASE WHEN sum(gc.net_hours) = 0 THEN NULL ELSE sum(gc.moves) / sum(gc.net_hours) END AS NET
+	, 'Oracle' AS platform
+FROM gmph_components gc
+GROUP BY 
+	EXTRACT (YEAR FROM COALESCE (gc.atd,gc.etd))
+	, EXTRACT (MONTH FROM COALESCE (gc.atd,gc.etd))
+	, to_char(trunc(COALESCE (gc.atd,gc.etd), 'MM'),'MM/DD/YYYY')
+ORDER BY 
+	EXTRACT (YEAR FROM COALESCE (gc.atd,gc.etd))
+	, EXTRACT (MONTH FROM COALESCE (gc.atd,gc.etd))
+;
+
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'SMKWANG' AND vv.in_voy_nbr = '2207E';
+
