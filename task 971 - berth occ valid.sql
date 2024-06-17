@@ -100,8 +100,9 @@ SELECT count(*), min(eh.posted), max(eh.posted) FROM equipment_history eh WHERE 
 --Aggregating for berth occupancy validation
 SELECT
 	to_char(trunc(COALESCE (vv.atd,vv.etd), 'MM'),'MM/DD/YYYY') AS analysis_month
-	, 'C60' AS terminal_key
-	, sum ((COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24) AS berth_occupancy_simple_hours
+	, 'DRS' AS terminal_key
+	, count(*) AS bu_total_calls
+	, sum ((COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata,vv.eta)) * 24) AS bu_total_berthed_hours
 	, 'Oracle' AS platform
 FROM vessel_visits vv
 WHERE 
@@ -120,29 +121,3 @@ ORDER BY
 	, EXTRACT (MONTH FROM COALESCE(vv.atd, vv.etd))
 ;
 
-SELECT 
-	eh.*
-FROM vessel_visits vv 
-JOIN equipment_history eh ON 
-	eh.vsl_id = vv.vsl_id
-	AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
-WHERE 
-	vv.vsl_id = 'MAHAWEL' 
-	AND vv.in_voy_nbr = '017W'
-	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD') 
-ORDER BY 
-	eh.crane_no
-	, eh.posted
-;
-
-SELECT
-	*
-FROM equipment_history eh
-WHERE
-	(eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
-	AND (eh.crane_no = '7' OR eh.crane_no = '8')
-	AND eh.posted BETWEEN to_timestamp ('2023-01-04 07:11:03.000','YYYY-MM-DD HH24:MI:SS.FF3') AND to_timestamp ('2023-01-04 15:29:42.000','YYYY-MM-DD HH24:MI:SS.FF3')
-ORDER BY 
-	eh.crane_no
-	, eh.posted
-;
