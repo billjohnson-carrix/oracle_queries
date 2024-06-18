@@ -14,7 +14,7 @@ WITH
 		FROM equipment_jn
 		WHERE 
 			sztp_class = 'CTR'
-		UNION ALL 
+	/*	UNION ALL 
 		SELECT
 			jn_datetime
 			, jn_entryid
@@ -26,7 +26,7 @@ WITH
 		FROM equipment_jn_arc
 		WHERE 
 			sztp_class = 'CTR'
-			AND jn_entryid >= 229820141
+			AND jn_entryid >= 229820141*/
 		ORDER BY 
 			nbr
 			, jn_entryid
