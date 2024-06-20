@@ -1,5 +1,7 @@
 SELECT * FROM equipment_jn_arc;
 
+SELECT * FROM equipment_jn WHERE nbr = '100111NZ';
+
 --Rebuilding the equipment table from equipment_jn
 WITH 
 	jn_entries AS (
@@ -14,6 +16,8 @@ WITH
 		FROM equipment_jn
 		WHERE 
 			sztp_class = 'CTR'
+			AND EXTRACT (YEAR FROM jn_datetime) = 2024
+			AND EXTRACT (MONTH FROM jn_datetime) = 2
 	/*	UNION ALL 
 		SELECT
 			jn_datetime
@@ -30,6 +34,7 @@ WITH
 		ORDER BY 
 			nbr
 			, jn_entryid
+		FETCH FIRST 100000 ROWS ONLY 
 	), labeled_entries AS (
 		SELECT
 			jn_entries.*
@@ -47,6 +52,9 @@ WITH
 					OR NOT (lag(loc_type,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Y') THEN 'No exit'
 			  END AS exit_label
 		FROM jn_entries
+		/*ORDER BY 
+			nbr
+			, jn_entryid*/
 	), inv_events AS (
 		SELECT 
 			jn_datetime
@@ -65,7 +73,10 @@ WITH
 			entry_label = 'Enters'
 			OR exit_label = 'Exits'
 			OR exit_label = 'Current'
-	), yard_durations AS (
+		/*ORDER BY 
+			nbr
+			, jn_entryid*/
+), yard_durations AS (
 		SELECT 
 			nbr
 			, teu_precise
@@ -76,27 +87,33 @@ WITH
 				ELSE NULL 
 			  END AS in_yard_datetime
 			, CASE 
-				WHEN entry_label = 'Enters' AND exit_label = 'Current' THEN sysdate 
+				WHEN entry_label = 'Enters' AND exit_label = 'Current' THEN trunc(sysdate) 
 				WHEN nbr = lead(nbr,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
 					AND lead(exit_label,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Exits' THEN lead(jn_datetime,1,null) OVER (PARTITION BY nbr ORDER BY jn_entryid)
 				WHEN nbr = lead(nbr,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) 
-					AND lead(exit_label,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Current' THEN  SYSDATE 
+					AND lead(exit_label,1,NULL) OVER (PARTITION BY nbr ORDER BY jn_entryid) = 'Current' THEN  trunc(SYSDATE) 
 				ELSE null
 			  END AS out_yard_datetime
 		FROM inv_events
+		/*ORDER BY 
+			nbr
+			, jn_entryid*/
 	), accum_snap AS (
 		SELECT 
 			*
 		FROM yard_durations
 		WHERE 
 			in_yard_datetime IS NOT NULL
+		/*ORDER BY 
+			nbr
+			, in_yard_datetime*/
 	), DateSeries (timestamp_col) AS (
-	    SELECT TO_TIMESTAMP('2023-04-21 00:35:00', 'YYYY-MM-DD HH24:MI:SS') AS timestamp_col
+	    SELECT TO_TIMESTAMP('2024-02-01 23:35:00', 'YYYY-MM-DD HH24:MI:SS') AS timestamp_col
 		    FROM dual
 	    UNION ALL
 	    SELECT timestamp_col + INTERVAL '1' DAY
 		    FROM dateseries
-	    WHERE timestamp_col < TRUNC(SYSDATE) + INTERVAL '00:35' HOUR TO MINUTE
+	    WHERE timestamp_col < to_date('2024-02-29','YYYY-MM-DD') + INTERVAL '00:35' HOUR TO MINUTE
 	), dates_of_interest AS (
 		SELECT 
 			timestamp_col
@@ -115,4 +132,11 @@ JOIN accum_snap acc ON
 	OR (doi.timestamp_col < out_yard_datetime AND in_yard_datetime IS null)
 GROUP BY timestamp_col
 ORDER BY timestamp_col
+;
+
+SELECT 
+	*
+FROM equipment_jn jn
+WHERE jn.nbr = 'AMFU3051495'
+ORDER BY jn.jn_entryid
 ;
