@@ -122,7 +122,7 @@ SELECT
 	, sum (CASE WHEN eh.status = 'F' AND eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_full_imports
 	, sum (CASE WHEN eh.status = 'F' AND eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_full_exports
 	, sum (CASE WHEN eh.status = 'F' AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_full_transships
-	, sum (CASE WHEN eh.temp_required IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_reefers
+	, sum (CASE WHEN eh.temp_required IS NOT NULL AND eh.temp_required <= 30 THEN 1 ELSE 0 END) AS ntt_total_reefers
 	, 'Oracle' AS Platform
 FROM equipment_history eh
 WHERE 
@@ -131,4 +131,14 @@ WHERE
 	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
 GROUP BY trunc(eh.posted, 'MM')
 ORDER BY trunc(eh.posted, 'MM')
+;
+
+SELECT
+	temp_required
+FROM equipment_history
+WHERE 
+	(EXTRACT (YEAR FROM posted) = 2023
+	 OR EXTRACT (YEAR FROM posted) = 2024)
+	AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+	AND temp_required IS NOT NULL 
 ;
