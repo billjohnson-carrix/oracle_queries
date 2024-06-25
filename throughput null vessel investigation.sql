@@ -107,11 +107,22 @@ order by
 --Query for Galen's spreadsheet
 SELECT
 	to_char(trunc(eh.posted, 'MM'),'MM/DD/YYYY') AS analysis_month
-	, 'MIT' AS terminal_key
+	, 'ZLO' AS terminal_key
 	, count(*) AS ntt_total_moves
 	, sum (CASE WHEN eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 end) AS ntt_total_imports
 	, sum (CASE WHEN eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_exports
-	, sum (CASE WHEN (eh.wtask_id = 'UNLOAD' OR eh.wtask_id = 'LOAD') AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_transships
+	, sum (CASE WHEN eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_transships
+	, sum (CASE WHEN to_number(substr(eh.sztp_id,1,2)) < 30 THEN 1 ELSE 2 END) AS ntt_total_teu_whole
+	, sum (to_number(substr(eh.sztp_id,1,2)) / 20) AS ntt_total_teu_precise
+	, sum (CASE WHEN eh.status = 'E' THEN 1 ELSE 0 END) AS ntt_total_empty_moves
+	, sum (CASE WHEN eh.status = 'E' AND eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_empty_imports
+	, sum (CASE WHEN eh.status = 'E' AND eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_empty_exports
+	, sum (CASE WHEN eh.status = 'E' AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS nt_total_empty_trasnships
+	, sum (CASE WHEN eh.status = 'F' THEN 1 ELSE 0 END) AS ntt_total_full_moves
+	, sum (CASE WHEN eh.status = 'F' AND eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_full_imports
+	, sum (CASE WHEN eh.status = 'F' AND eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 END) AS ntt_total_full_exports
+	, sum (CASE WHEN eh.status = 'F' AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_full_transships
+	, sum (CASE WHEN eh.temp_required IS NOT NULL THEN 1 ELSE 0 END) AS ntt_total_reefers
 	, 'Oracle' AS Platform
 FROM equipment_history eh
 WHERE 
