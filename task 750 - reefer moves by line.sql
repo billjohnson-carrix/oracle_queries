@@ -203,7 +203,7 @@ ORDER BY
 --query for Galen's spreadsheet
 SELECT 
 	to_char(trunc(eh.posted, 'MM'),'MM/DD/YYYY') AS analysis_month
-	, 'ZLO' AS terminal_key
+	, 'DRS' AS terminal_key
 	, eh.line_id
 	, sum (CASE WHEN eh.temp_required IS NOT NULL AND eh.temp_required <= 30 THEN 1 ELSE 0 END) AS ntt_total_reefers
 	, 'Oracle' AS platform
