@@ -199,3 +199,19 @@ WHERE
 ORDER BY 
 	1, 2, 4, 3
 ;
+
+--query for Galen's spreadsheet
+SELECT 
+	to_char(trunc(eh.posted, 'MM'),'MM/DD/YYYY') AS analysis_month
+	, 'ZLO' AS terminal_key
+	, eh.line_id
+	, sum (CASE WHEN eh.temp_required IS NOT NULL AND eh.temp_required <= 30 THEN 1 ELSE 0 END) AS ntt_total_reefers
+	, 'Oracle' AS platform
+FROM equipment_history eh
+WHERE 
+	(EXTRACT (YEAR FROM eh.posted) = 2023
+	 OR EXTRACT (YEAR FROM eh.posted) = 2024)
+	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+GROUP BY trunc(eh.posted, 'MM'), eh.line_id
+ORDER BY trunc(eh.posted, 'MM'), eh.line_id
+;
