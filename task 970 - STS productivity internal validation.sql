@@ -253,7 +253,8 @@ ORDER BY
 ;
 
 SELECT 
-	eh.*
+	eh.crane_no
+	, eh.*
 FROM vessel_visits vv 
 JOIN equipment_history eh ON 
 	eh.vsl_id = vv.vsl_id
