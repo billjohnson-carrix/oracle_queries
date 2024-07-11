@@ -106,8 +106,8 @@ SELECT
 	, 'Oracle' AS platform
 FROM vessel_visits vv
 WHERE 
-	(EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2023 OR  
-	 (EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2024 AND EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) <= 4)) 
+	 EXTRACT (YEAR FROM COALESCE (vv.atd, vv.etd)) = 2024 
+	 AND (EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 5 OR EXTRACT (MONTH FROM COALESCE (vv.atd, vv.etd)) = 6) 
 	AND (vv.atd IS NOT NULL OR 
 		(vv.atd IS NULL AND vv.berth IS NOT NULL)) 
 	AND COALESCE (vv.atd, vv.etd) - COALESCE (vv.ata, vv.eta) < 10 
