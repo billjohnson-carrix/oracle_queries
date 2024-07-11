@@ -356,3 +356,54 @@ ORDER BY
 ;
 
 --It validates. The data cleaning effort was unnecessary.
+
+--Query for Galen's workbook
+WITH periods AS (
+	SELECT 
+		2023 + trunc((LEVEL - 1)/12) AS YEAR
+		, mod(LEVEL - 1,12)+1 AS MONTH
+	FROM dual
+	CONNECT BY 
+		LEVEL <= 18
+), eh_summary AS (
+	SELECT 
+			trunc(eh.posted, 'MM') AS analysis_month
+			, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT') THEN 1 ELSE 0 END) AS TOTAL	
+			, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCD','REHDC') THEN 1 ELSE 0 END) AS total_required
+			, sum (CASE WHEN eh.wtask_id IN ('REHCCT','REHCDT','REHDCT') THEN 1 ELSE 0 END) AS total_convenience
+			, sum (CASE WHEN eh.wtask_id IN ('REHCC','REHCCT') THEN 1 ELSE 0 END) AS total_c2c
+			, sum (CASE WHEN eh.wtask_id IN ('REHCC') THEN 1 ELSE 0 END) AS required_c2c
+			, sum (CASE WHEN eh.wtask_id IN ('REHCCT') THEN 1 ELSE 0 END) AS convenience_c2c
+			, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHCDT','REHDC','REHDCT') THEN 1 ELSE 0 END) AS total_cdc
+			, sum (CASE WHEN eh.wtask_id IN ('REHCD','REHDC') THEN 1 ELSE 0 END) AS required_cdc
+			, sum (CASE WHEN eh.wtask_id IN ('REHCDT','REHDCT') THEN 1 ELSE 0 END) AS convenience_cdc
+		FROM equipment_history eh 
+		WHERE 
+			eh.wtask_id IN ('REHCC','REHCCT','REHCD','REHCDT','REHDC','REHDCT')
+			AND (EXTRACT (YEAR FROM eh.posted) = 2023 OR ((EXTRACT (YEAR FROM eh.posted) = 2024) AND EXTRACT (MONTH FROM eh.posted) <=6))
+		GROUP BY 
+			trunc(eh.posted, 'MM')
+/*		ORDER BY 
+			EXTRACT (YEAR FROM trunc(eh.posted, 'MM'))
+			, EXTRACT (MONTH FROM trunc(eh.posted, 'MM'))
+*/)
+SELECT 
+	to_char(per.month) || '/1/' || to_char(per.year) AS analysis_month
+	, 'ZLO' AS terminal_key
+	, nvl(eh.total,0) AS total
+	, nvl(eh.total_required,0) AS total_required
+	, nvl(eh.total_convenience,0) AS total_convenience
+	, nvl(eh.total_c2c,0) AS total_c2c
+	, nvl(eh.required_c2c,0) AS required_c2c
+	, nvl(eh.convenience_c2c,0) AS convenience_c2c 
+	, nvl(eh.total_cdc,0) AS total_cdc 
+	, nvl(eh.required_cdc,0) AS required_cdc
+	, nvl(eh.convenience_cdc,0) AS convenience_cdc
+FROM periods per
+LEFT JOIN eh_summary eh ON 
+	per.YEAR = EXTRACT (YEAR FROM eh.analysis_month)
+	and per.MONTH = EXTRACT (MONTH FROM eh.analysis_month)
+ORDER BY 
+	per.YEAR
+	, per.month
+;
