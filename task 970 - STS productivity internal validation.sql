@@ -252,20 +252,68 @@ ORDER BY
 	, eh.posted
 ;
 
-SELECT 
-	eh.crane_no
-	, eh.*
-FROM vessel_visits vv 
-JOIN equipment_history eh ON 
-	eh.vsl_id = vv.vsl_id
-	AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
-WHERE 
-	vv.vsl_id = 'MAHAWEL' 
-	AND vv.in_voy_nbr = '017W'
-	AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD') 
-ORDER BY 
+WITH ranked_records AS (
+	SELECT 
+		eh.crane_no
+		, eh.posted
+		, row_number() OVER (PARTITION BY crane_no ORDER BY posted desc) AS rn
+	FROM vessel_visits vv 
+	JOIN equipment_history eh ON 
+		eh.vsl_id = vv.vsl_id
+		AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
+	WHERE 
+		vv.vsl_id = 'MAHAWEL' 
+		AND vv.in_voy_nbr = '017W'
+		AND (eh.wtask_id in ('LOAD','UNLOAD','REHCD','REHCDT','REHDC','REHDCT','REHCC','REHCCT'))
+		AND eh.posted > vv.ata
+		AND eh.posted < vv.atd
+/*	ORDER BY 
+		eh.crane_no
+		, eh.posted*/
+)
+SELECT
 	eh.crane_no
 	, eh.posted
+FROM ranked_records eh
+WHERE rn <= 5
+ORDER BY 
+		eh.crane_no
+		, eh.posted
+;
+
+WITH by_crane AS (
+	SELECT 
+		eh.crane_no
+		, eh.posted
+	FROM vessel_visits vv 
+	JOIN equipment_history eh ON 
+		eh.vsl_id = vv.vsl_id
+		AND (eh.voy_nbr = vv.in_voy_nbr OR eh.voy_nbr = vv.out_voy_nbr)
+	WHERE 
+		vv.vsl_id = 'MAHAWEL' 
+		AND vv.in_voy_nbr = '017W'
+		AND (eh.wtask_id in ('LOAD','UNLOAD','REHCD','REHCDT','REHDC','REHDCT','REHCC','REHCCT'))
+		AND eh.posted > vv.ata
+		AND eh.posted < vv.atd
+/*	ORDER BY 
+			eh.crane_no
+			, eh.posted*/
+), first_and_last AS (
+	SELECT
+		crane_no
+		, min(posted) AS FIRST_move
+		, max(posted) AS LAST_move
+	FROM by_crane
+	GROUP BY crane_no
+), differences AS (
+	SELECT 
+		crane_no
+		, LAST_move - FIRST_move AS worktime
+	FROM first_and_last
+)
+SELECT
+	sum(worktime) * 24 AS total_worktime
+FROM differences
 ;
 
 SELECT
