@@ -61,7 +61,7 @@ SELECT
 	, (tv.exited - tv.entered) * 24 * 60 AS duration
 FROM truck_visits tv
 WHERE 
-	trunc(tv.entered) BETWEEN to_date('2024-01-08','YYYY-MM-DD') AND to_Date('2024-01-31','YYYY-MM-DD')
+	trunc(tv.entered) BETWEEN to_date('2024-03-16','YYYY-MM-DD') AND to_Date('2024-03-30','YYYY-MM-DD')
 	AND tv.exited IS NOT NULL 
 ORDER BY 
 	tv.entered
