@@ -220,7 +220,7 @@ WITH vessel_visits_of_interest AS (
 */)
 SELECT
     to_char(trunc(COALESCE (bc.atd,bc.etd), 'MM'),'MM/DD/YYYY') AS analysis_month
-    , 'TPT' AS terminal_key
+    , 'B63' AS terminal_key
     , sum(bc.moves) AS bmph_total_container_moves
     , sum(bc.worktimes) AS bmph_total_worktime
     , CASE WHEN sum(bc.worktimes) = 0 THEN NULL ELSE sum(bc.moves) / sum(bc.worktimes) END AS berth_moves_per_hour
