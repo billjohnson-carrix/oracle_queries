@@ -192,7 +192,7 @@ WITH journal_entries AS (
 		ej.sztp_class = 'CTR'
 		AND ej.loc_type = 'Y'
 		AND pos_block IS NOT NULL 
-		AND ROWNUM > 3000000
+		--AND ROWNUM > 3000000
 		--AND ROWNUM <= 3000000
 	ORDER BY 
 		ej.nbr
@@ -207,7 +207,7 @@ WITH journal_entries AS (
 	FROM spinnaker.td_row r
 	JOIN spinnaker.td_block b ON -- deliberate INNER JOIN TO avoid fanning OUT due TO deleted blocks - apparently NOT ALL ROWS GET deleted
 		b.id = r.block_id
-), results AS (
+)--, results AS (
 	SELECT
 		j.*
 		, r.name as row_name
