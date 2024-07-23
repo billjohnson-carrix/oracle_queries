@@ -172,31 +172,49 @@ ORDER BY 1
 
 SELECT unique_block_flag FROM spinnaker.td_terminal;
 
+SELECT count(*) FROM positions; --3299
+SELECT * FROM positions;
+SELECT count(*) FROM spinnaker.td_row; --313
+SELECT * FROM spinnaker.td_row;
+SELECT count(*) FROM spinnaker.td_block; --32
+SELECT * FROM spinnaker.td_block;
+
 -- This works for TAM UAT, TAM PROD,
 WITH journal_entries AS (
 	SELECT 
 		--count(*)
-		ej.jn_datetime
-		, ej.jn_entryid
-		, ej.nbr
+		--ej.jn_datetime
+		ej.jn_entryid
+		/*, ej.nbr
 		, ej.sztp_id
-		, ej.loc_type
+		, ej.loc_type*/
 		, ej.pos_id
-		, p.pos_block AS jn_block_name
-		, p.pos_row
-		, p.pos_block || p.pos_row AS pos_block_row
+		--, p.pos_block AS jn_block_name
+		--, p.pos_row
+		--, p.pos_block || p.pos_row AS pos_block_row
+		, ROWNUM r
 	FROM equipment_jn ej
-	LEFT JOIN positions p ON
-		p.id = ej.pos_id
+	--LEFT JOIN positions p ON
+		--p.id = ej.pos_id
 	WHERE 
 		ej.sztp_class = 'CTR'
 		AND ej.loc_type = 'Y'
-		AND pos_block IS NOT NULL 
-		--AND ROWNUM > 3000000
-		--AND ROWNUM <= 3000000
-	ORDER BY 
+		--AND pos_block IS NOT NULL 
+/*	ORDER BY 
 		ej.nbr
-		, ej.jn_entryid
+		, ej.jn_entryid*/
+), journal_slice AS (
+	SELECT * FROM journal_entries WHERE r > 0 AND r <= 100000
+), journal_join AS (
+	SELECT 
+		js.*
+		, p.pos_block AS jn_block_name
+		--, p.pos_row
+		, p.pos_block || p.pos_row AS pos_block_row
+	FROM journal_slice js
+	LEFT JOIN positions p ON
+		p.id = js.pos_id
+	WHERE p.pos_block IS NOT null
 ), rows_with_blocks AS (
 	SELECT
 		r.id AS row_id
@@ -207,22 +225,22 @@ WITH journal_entries AS (
 	FROM spinnaker.td_row r
 	JOIN spinnaker.td_block b ON -- deliberate INNER JOIN TO avoid fanning OUT due TO deleted blocks - apparently NOT ALL ROWS GET deleted
 		b.id = r.block_id
-)--, results AS (
+), results AS (
 	SELECT
 		j.*
 		, r.name as row_name
 		, r.name40
 		, COALESCE (br.name,bj.name) AS block_name
 		--, br.name AS block_name
-	FROM journal_entries j
+	FROM journal_join j
 	LEFT JOIN rows_with_blocks r ON
 		(r.name = j.pos_block_row OR r.name40 = j.pos_block_row)
 	LEFT JOIN spinnaker.td_block br ON br.name = r.r_block_name -- sometimes the concatenation doesn't produce a block name
 	LEFT JOIN spinnaker.td_block bj ON bj.name = j.jn_block_name -- but the pos_block might still be a block name
 	-- Joining on block IDs isn't durable enough. Blocks are deleted and then recreated with the same name. 
-	ORDER BY 
+	/*ORDER BY 
 		j.nbr
-		, j.jn_entryid
+		, j.jn_entryid*/
 ), dups AS (
 	SELECT
 		res.jn_entryid AS jn_entryid
@@ -254,3 +272,9 @@ JOIN spinnaker.td_block b ON -- deliberate INNER JOIN TO avoid fanning OUT due T
 	b.id = r.block_id
 WHERE r.name = '305' OR r.name40 = '305'
 ;
+
+SELECT *
+FROM equipment_jn
+WHERE jn_entryid IN ('11755148','11755155','11755161')
+
+SELECT DISTINCT id FROM positions ORDER BY id;
