@@ -172,11 +172,11 @@ ORDER BY 1
 
 SELECT unique_block_flag FROM spinnaker.td_terminal;
 
-SELECT count(*) FROM positions; --3299
+SELECT count(*) FROM positions; --129783
 SELECT * FROM positions;
-SELECT count(*) FROM spinnaker.td_row; --313
+SELECT count(*) FROM spinnaker.td_row; --3383
 SELECT * FROM spinnaker.td_row;
-SELECT count(*) FROM spinnaker.td_block; --32
+SELECT count(*) FROM spinnaker.td_block; --9664
 SELECT * FROM spinnaker.td_block;
 
 -- This works for TAM UAT, TAM PROD,
@@ -278,3 +278,7 @@ FROM equipment_jn
 WHERE jn_entryid IN ('11755148','11755155','11755161')
 
 SELECT DISTINCT id FROM positions ORDER BY id;
+
+SELECT pos_mode, count(*) FROM containers GROUP BY pos_mode ORDER BY pos_mode;
+SELECT * FROM enums_for_external_use WHERE enum_value = 'Y';
+SELECT DISTINCT enumb_name FROM enumb_string;
