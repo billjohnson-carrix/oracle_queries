@@ -282,3 +282,11 @@ SELECT DISTINCT id FROM positions ORDER BY id;
 SELECT pos_mode, count(*) FROM containers GROUP BY pos_mode ORDER BY pos_mode;
 SELECT * FROM enums_for_external_use WHERE enum_value = 'Y';
 SELECT DISTINCT enumb_name FROM enumb_string;
+
+SELECT
+	eq.*
+	, p.*
+FROM equipment eq
+LEFT JOIN positions p ON p.id = eq.pos_id
+WHERE eq.loc_type = 'Y'
+;
