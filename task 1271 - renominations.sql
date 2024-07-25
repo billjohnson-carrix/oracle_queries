@@ -57,8 +57,8 @@ INNER JOIN mtms.services vserv on VESSEL_VISITS.OUT_SRVC_ID = vserv.id and v.lin
 INNER JOIN MTMS.line_operators lroll on EQUIPMENT_HISTORY.line_id = lroll.id
 WHERE (EQUIPMENT_HISTORY.WTASK_ID = 'ROLL' OR EQUIPMENT_HISTORY.WTASK_ID = 'SPLIT')
     -- Search by vessel visit ATD
-    AND VESSEL_VISITS.ATD >= to_date('2024-01-01','YYYY-MM-DD')
-    AND VESSEL_VISITS.ATD < to_date('2024-01-31','YYYY-MM-DD') + interval '1' day
+    AND VESSEL_VISITS.ATD >= to_date('2023-01-01','YYYY-MM-DD')
+    AND VESSEL_VISITS.ATD < to_date('2023-01-31','YYYY-MM-DD') + interval '1' DAY
     ---- Search by rolling event creation date
     --AND EQUIPMENT_HISTORY.CREATED >= to_date('2024-05-01','YYYY-MM-DD')
     --AND EQUIPMENT_HISTORY.CREATED < to_date('2024-05-05','YYYY-MM-DD') + interval '1' day
@@ -180,3 +180,4 @@ SELECT DISTINCT RV_DOMAIN FROM CG_REF_CODES;
 SELECT * FROM positions WHERE id = 'ITR';
 
 SELECT DISTINCT rv_domain FROM cg_ref_codes;
+
