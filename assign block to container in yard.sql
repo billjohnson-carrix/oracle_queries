@@ -290,3 +290,71 @@ FROM equipment eq
 LEFT JOIN positions p ON p.id = eq.pos_id
 WHERE eq.loc_type = 'Y'
 ;
+
+SELECT
+	eq.nbr AS eq_nbr
+	, eq.loc_type
+	, eq.pos_id
+	, con.block_or_carrier
+	, b.name
+FROM equipment eq
+LEFT JOIN spinnaker.containers con ON
+	eq.nbr = con.container_number
+LEFT JOIN spinnaker.td_block b ON
+	con.block_or_carrier = b.name
+WHERE eq.loc_type = 'Y'
+	AND sztp_class = 'CTR'
+;
+
+SELECT
+	b.name
+	, count(*)
+FROM equipment eq
+LEFT JOIN spinnaker.containers con ON
+	eq.nbr = con.container_number
+LEFT JOIN spinnaker.td_block b ON
+	con.block_or_carrier = b.name
+WHERE eq.loc_type = 'Y'
+	AND sztp_class = 'CTR'
+GROUP BY b.name
+ORDER BY 2 desc
+;
+
+--This seems to be a good way to get the block name for the current state.
+--This could be used with a capture of the spinnaker.containers table where the rows 
+--had an effective and expiration date. We could search for containers present 
+--during a day by looking for rows that were effective before the start of the next day
+--and expired after the start of the desired day.
+SELECT
+	--sum (CASE WHEN b.name IS NOT NULL THEN 1 ELSE 0 END ) AS nonnulls_names
+	sum (CASE WHEN b.name IS NULL THEN 1 ELSE 0 END ) AS NULLS_names
+	, count(*) AS total
+	, sum (CASE WHEN b.name IS NULL THEN 1 ELSE 0 END ) / count(*) * 100 AS null_percent
+	, sum (CASE WHEN con.block_or_carrier IS NULL THEN 1 ELSE 0 END ) AS missing_containers
+	, sum (CASE WHEN con.block_or_carrier IS NOT NULL AND b.name IS NULL THEN 1 ELSE 0 END ) AS missing_blocks
+FROM equipment eq
+LEFT JOIN spinnaker.containers con ON
+	eq.nbr = con.container_number
+LEFT JOIN spinnaker.td_block b ON
+	con.block_or_carrier = b.name
+WHERE eq.loc_type = 'Y'
+	AND sztp_class = 'CTR'
+;
+
+--For investigating the NULL names
+SELECT
+	eq.nbr AS eq_nbr
+	, eq.loc_type
+	, eq.pos_id
+	, con.block_or_carrier
+	, b.name
+FROM equipment eq
+LEFT JOIN spinnaker.containers con ON
+	eq.nbr = con.container_number
+LEFT JOIN spinnaker.td_block b ON
+	con.block_or_carrier = b.name
+WHERE eq.loc_type = 'Y'
+	AND sztp_class = 'CTR'
+	AND b.name IS NULL 
+; --Someone deleted the C101 block recently AT T5S
+
