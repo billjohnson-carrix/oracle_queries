@@ -19,3 +19,34 @@ INNER JOIN long_turn_time_visits ltt ON
 	ltt.gkey = gt.tv_gkey
 ORDER BY gt.tv_gkey
 ;
+
+-- Now to aggegate MIT/ZLO/ZLO 2/ and ZLO AV moves by vessel for assignment to a calendar month
+WITH 
+	by_vessel AS (
+		SELECT
+			v.name
+			, vv.VSL_ID 
+			, vv.in_VOY_NBR
+			, vv.OUT_VOY_NBR 
+			, COALESCE (trunc(vv.atd), max(trunc(eh.posted))) AS dt
+			, sum (CASE WHEN eh.wtask_id = 'UNLOAD' AND eh.transship IS NULL THEN 1 ELSE 0 end) AS imports
+			, sum (CASE WHEN eh.wtask_id = 'LOAD' AND eh.transship IS NULL THEN 1 ELSE 0 end) AS exports
+			, sum (CASE WHEN (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD') AND eh.transship IS NOT NULL THEN 1 ELSE 0 END) AS transships
+			, count(*) AS moves
+		FROM EQUIPMENT_HISTORY eh 
+		JOIN VESSEL_VISITS vv ON eh.VSL_ID = vv.VSL_ID AND (eh.VOY_NBR = vv.IN_VOY_NBR OR eh.VOY_NBR = vv.OUT_VOY_NBR)
+		JOIN VESSELS v ON vv.VSL_ID = v.ID 
+		WHERE 
+			eh.posted > to_date('2023-12-21', 'YYYY-MM-DD') 
+			AND eh.posted < to_date('2024-07-11', 'YYYY-MM-DD')
+			AND eh.vsl_id IS NOT NULL
+			AND (eh.wtask_id = 'LOAD' OR eh.wtask_id = 'UNLOAD')
+		GROUP BY v.name, vv.VSL_ID, vv.in_VOY_NBR, vv.OUT_VOY_NBR, vv.atd
+		--ORDER BY COALESCE (trunc(vv.atd), max(trunc(eh.posted)))
+	) 
+SELECT
+	*
+FROM by_vessel bv
+WHERE dt > to_date('2024-01-01','YYYY-MM-DD')
+	AND dt < to_date('2024-07-01','YYYY-MM-DD')
+;
