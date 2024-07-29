@@ -125,8 +125,8 @@ WHERE (EQUIPMENT_HISTORY.WTASK_ID = 'ROLL' OR EQUIPMENT_HISTORY.WTASK_ID = 'SPLI
     -- Search by vessel visit ATD
     --trunc(VESSEL_VISITS.ATD) between to_date('2024-05-01','YYYY-MM-DD') AND to_date('2024-05-31','YYYY-MM-DD')
     ---- Search by rolling event creation date
-    AND EQUIPMENT_HISTORY.CREATED >= to_date('2024-05-01','YYYY-MM-DD')
-    AND EQUIPMENT_HISTORY.CREATED < to_date('2024-05-05','YYYY-MM-DD') + interval '1' day
+    AND EQUIPMENT_HISTORY.CREATED >= to_date('2023-01-01','YYYY-MM-DD')
+    AND EQUIPMENT_HISTORY.CREATED < to_date('2023-01-31','YYYY-MM-DD') + interval '1' day
 ;
 
 SELECT * FROM vessel_visits WHERE trunc(atd) BETWEEN to_date('2024-05-01','YYYY-MM-DD') AND to_date('2024-05-31','YYYY-MM-DD');
