@@ -50,3 +50,25 @@ FROM by_vessel bv
 WHERE dt > to_date('2024-01-01','YYYY-MM-DD')
 	AND dt < to_date('2024-07-01','YYYY-MM-DD')
 ;
+
+select 
+	gt.LANE_ID,
+	gt.TRUCK_RFID_NBR, 
+	gt.WTASK_ID, 
+	gt.CTR_NBR, 
+	gt.CTR_SZTP_ID, 
+	gt.LINE_ID, 
+	(t.LIC_NBR || t.lic_state) LIC_PLATE, 
+	gt.POS_ID,
+	gt.PRECHECKED, 
+	gt.DECKED, 
+	trunc(((gt.DECKED - gt.PRECHECKED) * 60) * 24) TURN_TIME
+from gate_transactions gt 
+left outer join trucks t on gt.TRUCK_RFID_NBR = t.RFID_NBR
+where 
+	gt.wtask_id =  'FULLIN'
+	and trunc(gt.PRECHECKED) between to_date( '06/01/2024' ,'MM/DD/YYYY') and to_date( '06/02/2024' ,'MM/DD/YYYY')
+	and gt.tran_status ='EIR'
+	and gt.decked is not NULL
+order by gt.PRECHECKED
+;
