@@ -10,10 +10,10 @@ WITH vessel_visits_of_interest AS (
 	JOIN vessels v ON
 		vv.vsl_id = v.id
 	WHERE 
-		COALESCE (vv.atd, vv.etd) > to_date('2022-01-01','YYYY-MM-DD')
-		AND COALESCE (vv.atd, vv.etd) < to_date('2023-10-01','YYYY-MM-DD')
+		COALESCE (vv.atd, vv.etd) > to_date('2023-08-01','YYYY-MM-DD')
+		AND COALESCE (vv.atd, vv.etd) < sysdate
 		AND (vv.atd IS NOT NULL OR (vv.atd IS NULL AND vv.berth IS NOT null))
-		AND NOT v.category = 'RORO'
+		AND (v.category IS NULL OR NOT v.category = 'RORO')
 	ORDER BY
 		COALESCE (vv.atd, vv.etd)
 ), vessel_move_lists AS (
@@ -142,3 +142,4 @@ FROM move_breakdown_for_period
 --FROM breakdown_by_line
 --FROM roro_contribution --COMMENT OUT the NO RORO clause
 ;
+
