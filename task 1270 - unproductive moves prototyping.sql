@@ -434,6 +434,8 @@ WITH
 		FROM equipment_jn
 		WHERE 
 			sztp_class = 'CTR'
+			AND pos_id IS NOT NULL 
+			AND pos_id NOT IN ('YARD','UTR','TRUCK','GATE','INGATE','WHLS','TBD','GND')
 		ORDER BY 
 			nbr
 			, jn_entryid
@@ -697,3 +699,33 @@ FROM move_breakdown_for_period
 --FROM breakdown_by_line
 --FROM roro_contribution --COMMENT OUT the NO RORO clause
 ;
+
+SELECT * FROM equipment_jn WHERE pos_id IS NULL AND loc_type = 'Y' AND sztp_class = 'CTR';
+
+SELECT * FROM vessel_visits vv WHERE vv.vsl_id = 'ERVING' AND vv.in_voy_nbr = '0TND5';
+
+SELECT
+	jn_datetime
+	, jn_entryid
+	, nbr
+	, sztp_class
+	, loc_type
+	, pos_id
+FROM equipment_jn
+WHERE 
+	sztp_class = 'CTR'
+ORDER BY 
+	nbr
+	, jn_entryid
+;
+
+SELECT * FROM equipment_history eh 
+WHERE eh.vsl_id = 'ERVING' AND (eh.voy_nbr = '0TND5' OR eh.voy_nbr = '0TND6') AND (wtask_id = 'LOAD' OR wtask_id = 'UNLOAD')
+ORDER BY eh.posted;
+
+SELECT * FROM equipment_jn ej
+WHERE ej.nbr = 'MSNU7165635'
+ORDER BY ej.jn_entryid;
+
+SELECT * FROM equipment_jn ej
+WHERE ej.pos_id = 'UTL' AND ej.sztp_class = 'CTR' AND ej.loc_type = 'Y';
