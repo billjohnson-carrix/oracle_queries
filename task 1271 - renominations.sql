@@ -57,8 +57,8 @@ INNER JOIN mtms.services vserv on VESSEL_VISITS.OUT_SRVC_ID = vserv.id and v.lin
 INNER JOIN MTMS.line_operators lroll on EQUIPMENT_HISTORY.line_id = lroll.id
 WHERE (EQUIPMENT_HISTORY.WTASK_ID = 'ROLL' OR EQUIPMENT_HISTORY.WTASK_ID = 'SPLIT')
     -- Search by vessel visit ATD
-    AND VESSEL_VISITS.ATD >= to_date('2023-01-01','YYYY-MM-DD')
-    AND VESSEL_VISITS.ATD < to_date('2023-01-31','YYYY-MM-DD') + interval '1' DAY
+    AND VESSEL_VISITS.ATD >= to_date('2024-01-01','YYYY-MM-DD')
+    AND VESSEL_VISITS.ATD < to_date('2024-07-31','YYYY-MM-DD') + interval '1' DAY
     ---- Search by rolling event creation date
     --AND EQUIPMENT_HISTORY.CREATED >= to_date('2024-05-01','YYYY-MM-DD')
     --AND EQUIPMENT_HISTORY.CREATED < to_date('2024-05-05','YYYY-MM-DD') + interval '1' day
@@ -133,10 +133,10 @@ SELECT * FROM vessel_visits WHERE trunc(atd) BETWEEN to_date('2024-05-01','YYYY-
 SELECT * FROM equipment_history WHERE vsl_id = 'TOLEDO' AND voy_nbr = '402F';
 
 --4816 records for May 1 through May 5 2024
-SELECT * FROM equipment_history 
+SELECT count(*) FROM equipment_history 
 WHERE (wtask_id = 'ROLL' OR wtask_id = 'SPLIT')
-    AND EQUIPMENT_HISTORY.CREATED >= to_date('2024-05-01','YYYY-MM-DD')
-    AND EQUIPMENT_HISTORY.CREATED < to_date('2024-05-05','YYYY-MM-DD') + interval '1' day
+    AND EQUIPMENT_HISTORY.CREATED >= to_date('2024-01-01','YYYY-MM-DD')
+    AND EQUIPMENT_HISTORY.CREATED < to_date('2024-08-01','YYYY-MM-DD') + interval '1' day
 ;
 
 SELECT wtask_id, count(*) FROM equipment_history 
