@@ -358,3 +358,15 @@ WHERE eq.loc_type = 'Y'
 	AND b.name IS NULL 
 ; --Someone deleted the C101 block recently AT T5S
 
+--Looking at some T30 data
+SELECT * FROM positions WHERE id = 'D274';
+SELECT * FROM spinnaker.td_row WHERE name = 'D274' OR name40 = 'D274';
+SELECT * FROM spinnaker.td_row WHERE name = 'D200274' OR name40 = 'D200274';
+SELECT * FROM spinnaker.td_block WHERE name = 'D200';
+
+select distinct pos_id from equipment_jn
+where loc_type = 'Y'
+and jn_datetime > trunc(sysdate-120)
+and loc_id = 'T30'
+and pos_id not in (select id from positions)
+
