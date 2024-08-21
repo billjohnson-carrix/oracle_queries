@@ -1399,3 +1399,186 @@ WITH rolls_current_attributes AS (
 )
 SELECT * FROM final
 ;
+
+/*Investigating Sean's questions
+ * Wouldn't we want to order by eh.posted asc to get the first event, and true "original"? 
+ */
+WITH rolls_current_attributes AS (
+	SELECT 
+		EQUIPMENT_HISTORY.EQ_NBR
+	    , EQUIPMENT_HISTORY.LINE_ID
+	    , lroll.name as roll_line_name
+	    , EQUIPMENT_HISTORY.VOY_NBR
+	    , EQUIPMENT_HISTORY.EXP_SO_NBR
+	    , EQUIPMENT_HISTORY.CREATED
+	    , EQUIPMENT_HISTORY.CREATOR
+	    , EQUIPMENT_HISTORY.WTASK_ID
+	    , EQUIPMENT_HISTORY.SZTP_ID
+	    , EQUIPMENT_HISTORY.VSL_ID
+	    , EQUIPMENT_HISTORY.equse_gkey
+	    , EQUIPMENT_HISTORY.posted
+	    , equipment_history.gkey
+	    , v.name as vessel_name
+	    , v.line_id as vessel_line_id
+	    , l.name as vessel_line_name
+	    , VESSEL_VISITS.IN_VOY_NBR
+	    , VESSEL_VISITS.OUT_VOY_NBR
+	    , VESSEL_VISITS.ATA
+	    , VESSEL_VISITS.ATD
+	    ---- Requested by Maersk Line - RQS0113345
+	    --, case when u.in_loc_type = 'V' then 'Vessel' || ' - ' || u.in_loc_id || ' / ' || u.in_visit_id || ' (' || u.in_carrier_id || ')'
+	    --       when u.in_loc_type = 'T' then 'Truck' || ' - ' || u.in_loc_id || ' (' || u.in_carrier_id || ')'
+	    --       else u.in_loc_type || ' Unknown' || ' - ' || u.in_loc_id || ' / ' || u.in_visit_id || ' (' || u.in_carrier_id || ')'
+	    --  end PRE_CARRIER*/
+	    , EQUIPMENT_HISTORY.VSL_ID || ' / ' || EQUIPMENT_HISTORY.VOY_NBR AS NEW_LOADING_VESSEL_VOYAGE
+	    , p1.name || ' (' || equipment_history.discharge_port_id1 || ')' as NEW_DISCHARGE_PORT
+	    , VESSEL_VISITS.OUT_SRVC_ID
+	    , vserv.name as service_name
+	    FROM MTMS.VESSEL_VISITS VESSEL_VISITS
+	    INNER JOIN MTMS.EQUIPMENT_HISTORY EQUIPMENT_HISTORY on 
+	    	VESSEL_VISITS.VSL_ID = EQUIPMENT_HISTORY.VSL_ID 
+	    	AND VESSEL_VISITS.OUT_VOY_NBR = EQUIPMENT_HISTORY.VOY_NBR
+	    --INNER JOIN MTMS.equipment_uses u on equipment_history.equse_gkey = u.gkey
+	    INNER JOIN MTMS.vessels v on EQUIPMENT_HISTORY.vsl_id = v.id
+	    INNER JOIN MTMS.line_operators l on v.line_id = l.id
+	    INNER JOIN mtms.handling_points p1 on EQUIPMENT_HISTORY.discharge_port_id1 = p1.id
+	    INNER JOIN mtms.services vserv on 
+	    	VESSEL_VISITS.OUT_SRVC_ID = vserv.id 
+	    	and v.line_id = vserv.line_id
+	    INNER JOIN MTMS.line_operators lroll on EQUIPMENT_HISTORY.line_id = lroll.id
+	    WHERE (EQUIPMENT_HISTORY.WTASK_ID = 'ROLL' OR EQUIPMENT_HISTORY.WTASK_ID = 'SPLIT')
+		    AND EQUIPMENT_HISTORY.status = 'F'
+		    AND EQUIPMENT_HISTORY.LOC_TYPE = 'Y'
+		    AND v.line_id not in ('WIL')
+		    --AND VESSEL_VISITS.ATD >= to_date('2024-04-01','YYYY-MM-DD')
+		    --AND VESSEL_VISITS.ATD < to_date('2024-04-05','YYYY-MM-DD') + interval '1' day
+		    AND VESSEL_VISITS.ATD >= to_date('2023-08-01' ,'YYYY-MM-DD')
+		    AND VESSEL_VISITS.ATD < to_date('2024-07-31' ,'YYYY-MM-DD') + interval '1' DAY
+		    --AND equipment_history.vsl_id = 'SPIRMEL' AND equipment_history.voy_nbr = '422N'
+		    --AND equipment_history.eq_nbr = 'TCKU1098947'
+), prior_eq_hist_events AS (
+	select 
+		rolls_current_attributes.*
+		, eh.vsl_id || ' / ' || eh.voy_nbr as ori_load_vsl_voy
+		, p2.name || ' (' || eh.discharge_port_id1 || ')' as ori_dis_port
+		, eh.posted AS eq_hist_posted
+		, row_number() over (PARTITION BY eh.equse_gkey, rolls_current_attributes.posted order by eh.posted desc, eh.wtask_id) as ordernum
+	from rolls_current_attributes
+	INNER JOIN equipment_history eh ON 
+		eh.equse_gkey = rolls_current_attributes.equse_gkey
+		and eh.posted < rolls_current_attributes.posted
+	INNER JOIN handling_points p2 on eh.discharge_port_id1 = p2.id
+	where 
+		eh.removed is null
+		and eh.vsl_id != 'CRFROLL'
+	order by ordernum
+), first_eq_hist_events AS (
+	SELECT 
+		eq_nbr
+		, equse_gkey
+		, posted
+		, ori_load_vsl_voy AS ORIGINAL_LOADING_VESSEL_VOYAGE
+		, ori_dis_port AS ORIGINAL_DISCHARGE_PORT
+	FROM prior_eq_hist_events
+	WHERE ordernum = 1
+), orig_attributes_joined AS (
+	SELECT 
+		rolls_current_attributes.*
+		, first_eq_hist_events.ORIGINAL_LOADING_VESSEL_VOYAGE
+		, first_eq_hist_events.ORIGINAL_DISCHARGE_PORT
+	FROM rolls_current_attributes
+	INNER JOIN first_eq_hist_events ON 
+		rolls_current_attributes.eq_nbr = first_eq_hist_events.eq_nbr
+		AND rolls_current_attributes.equse_gkey = first_eq_hist_events.equse_gkey
+		AND rolls_current_attributes.posted = first_eq_hist_events.posted
+), rolls_current_and_orig_atts AS (
+	select 
+		EQ_NBR as container_number
+		, EXP_SO_NBR as booking_number
+		, VSL_ID as vessel_id
+		, vessel_name
+		, vessel_line_id
+		, vessel_line_name
+		, VOY_NBR as out_voyage_number
+		, OUT_SRVC_ID as service_id
+		, service_name
+		, ATA
+		, ATD
+		, LINE_ID as roll_line_id
+		, roll_line_name
+		, CREATED
+		, CREATOR
+		, WTASK_ID
+		, SZTP_ID
+		--, PRE_CARRIER
+		, ORIGINAL_LOADING_VESSEL_VOYAGE
+		, NEW_LOADING_VESSEL_VOYAGE
+		, ORIGINAL_DISCHARGE_PORT
+		, NEW_DISCHARGE_PORT
+	from orig_attributes_joined
+	WHERE 
+		(ORIGINAL_LOADING_VESSEL_VOYAGE != NEW_LOADING_VESSEL_VOYAGE 
+			OR ORIGINAL_DISCHARGE_PORT != NEW_DISCHARGE_PORT)
+	ORDER BY 
+		WTASK_ID
+		, ORIGINAL_LOADING_VESSEL_VOYAGE
+		, NEW_LOADING_VESSEL_VOYAGE
+	    , ORIGINAL_DISCHARGE_PORT
+	    , NEW_DISCHARGE_PORT
+	    , EQ_NBR
+), FINAL AS (
+	select 
+		x.vessel_id
+		, x.vessel_name
+		, x.vessel_line_id
+		, case when x.vessel_line_id = 'MAE' then 'MAERSK' else x.vessel_line_name end as vessel_line_name
+		, x.out_voyage_number
+		, x.service_id
+		, x.service_name
+		, x.ATA
+		, x.ATD
+		, x.roll_line_id
+		, case when x.roll_line_id = 'MAE' then 'MAERSK' else x.roll_line_name end as roll_line_name
+		, count(container_number) as roll_quantity
+	from rolls_current_and_orig_atts x
+	group by 
+		x.vessel_id
+		, x.vessel_name
+		, x.vessel_line_id
+		, x.vessel_line_name
+		, x.out_voyage_number
+		, x.service_id
+		, x.service_name
+		, x.ATA
+		, x.ATD
+		, x.roll_line_id
+		, x.roll_line_name
+	order by 
+		x.ATD
+		, x.roll_line_id
+), prior_events AS (
+	SELECT 
+		eq_nbr
+		, new_loading_vessel_voyage
+		, ori_load_vsl_voy
+		, new_discharge_port
+		, ori_dis_port
+		, ordernum 
+		, eq_hist_posted
+	FROM prior_eq_hist_events 
+	WHERE equse_gkey = '24450729' 
+	ORDER BY 
+		equse_gkey
+		, posted
+		, ordernum
+), rolled_containers AS (
+	SELECT
+		container_number
+		, NEW_LOADING_VESSEL_VOYAGE
+		, ORIGINAL_LOADING_VESSEL_VOYAGE
+		, NEW_DISCHARGE_PORT
+		, ORIGINAL_DISCHARGE_PORT
+	FROM rolls_current_and_orig_atts rolls
+	WHERE vessel_id = 'ROBIN5'
+)
+SELECT * FROM prior_events;
