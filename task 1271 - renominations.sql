@@ -1582,3 +1582,56 @@ WITH rolls_current_attributes AS (
 	WHERE vessel_id = 'ROBIN5'
 )
 SELECT * FROM prior_events;
+
+--Redo using equipment_uses_jn
+WITH mit_uses AS (
+	SELECT
+		gkey
+		, jn_entryid
+		, jn_datetime
+		, eq_nbr
+		, eq_class
+		, category
+		, status
+		, discharge_port_id1 AS disch_port
+		, so_line_id
+		, out_loc_type
+		, out_loc_id
+		, out_visit_id
+		, in_yard_date AS IN_yard_at
+		, out_yard_date AS out_yard_at
+		, ROW_NUMBER() OVER (PARTITION BY gkey ORDER BY jn_entryid) AS jn_version
+		, row_number() OVER (PARTITION BY gkey ORDER BY jn_entryid desc) AS rev_jn_version 
+	FROM equipment_uses_jn
+), renomination_history AS (
+	SELECT
+		gkey
+		, jn_entryid
+		, jn_datetime
+		, eq_nbr
+		, CASE
+			WHEN
+				(
+					disch_port != lag(disch_port) OVER (PARTITION BY gkey ORDER BY jn_entryid)
+					OR out_loc_id != lag(out_loc_id) OVER (PARTITION BY gkey ORDER BY jn_entryid)
+					OR out_visit_id != lag(out_visit_id) OVER (PARTITION BY gkey ORDER BY jn_entryid)
+				)
+				AND out_loc_type = 'V'
+				AND lag(out_loc_type) OVER (PARTITION BY gkey ORDER BY jn_entryid) = 'V'
+				AND status = 'F'
+				AND lag(status) OVER (PARTITION BY gkey ORDER BY jn_entryid) = 'F'
+				AND eq_class = 'CTR'
+			THEN 'Renomination event'
+			ELSE 'Not renomination event'
+		END AS renomination_label
+	FROM mit_uses
+	ORDER BY 
+		gkey
+		, jn_entryid
+), renom_data AS (
+	SELECT *
+	FROM renomination_history
+	WHERE renomination_label = 'Renomination event'
+)
+SELECT * FROM renom_data --FETCH FIRST 100000 ROWS ONLY 
+;
