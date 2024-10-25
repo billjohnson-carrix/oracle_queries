@@ -2735,7 +2735,7 @@ WITH rolls_current_attributes AS (
 		    --AND VESSEL_VISITS.ATD >= to_date('2024-04-01','YYYY-MM-DD')
 		    --AND VESSEL_VISITS.ATD < to_date('2024-04-05','YYYY-MM-DD') + interval '1' day
 		    AND VESSEL_VISITS.ATD >= to_date('2024-07-01' ,'YYYY-MM-DD')
-		    AND VESSEL_VISITS.ATD < to_date('2024-08-01' ,'YYYY-MM-DD') + interval '1' DAY
+		    AND VESSEL_VISITS.ATD < to_date('2024-07-31' ,'YYYY-MM-DD') + interval '1' DAY
 		    --AND equipment_history.vsl_id = 'SPIRMEL' AND equipment_history.voy_nbr = '422N'
 		    --AND equipment_history.eq_nbr = 'TCKU1098947'
 ), prior_eq_hist_events AS (
@@ -2835,14 +2835,55 @@ WITH rolls_current_attributes AS (
 		, x.roll_line_id
 		, x.roll_line_name
 	order by 
-		x.ATD
+		x.vessel_id
+		, x.ATD
 		, x.roll_line_id
 )
-SELECT container_number, count(*) AS cnt FROM rolls_current_and_orig_atts GROUP BY container_number ORDER BY 2 desc
+SELECT * FROM final
+--ORDER BY container_number, created
+--SELECT container_number, count(*) AS cnt FROM rolls_current_and_orig_atts GROUP BY container_number ORDER BY 2 desc
 ;
 
 SELECT *
 FROM equipment_uses_jn
-WHERE gkey = '25905731'
+WHERE gkey = '25878094'
 ORDER BY jn_entryid
+;
+
+SELECT *
+FROM equipment_history
+WHERE eq_nbr = 'BEAU5388832'
+ORDER BY posted
+; --CONTFOX 2427S
+
+SELECT *
+FROM vessel_visits
+WHERE
+	vsl_id = 'CONTFOX'
+	AND out_voy_nbr = '2427S'
+;
+
+SELECT *
+FROM vessels
+WHERE id = 'CONTFOX'
+;
+
+SELECT *
+FROM line_operators
+WHERE id = 'ONE'
+;
+
+SELECT *
+FROM handling_points
+WHERE id = 'MAO'
+;
+
+SELECT *
+FROM services
+WHERE id = 'CX1' --AND line_id = 'CFS'
+;
+
+SELECT *
+FROM equipment_history
+WHERE equse_gkey = '25969091' AND posted < to_timestamp('2024-07-15  21:45:57', 'YYYY-MM-DD HH24:MI:SS')
 ;
