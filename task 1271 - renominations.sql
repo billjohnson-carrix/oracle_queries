@@ -2887,3 +2887,8 @@ SELECT *
 FROM equipment_history
 WHERE equse_gkey = '25969091' AND posted < to_timestamp('2024-07-15  21:45:57', 'YYYY-MM-DD HH24:MI:SS')
 ;
+
+SELECT *
+FROM cg_ref_codes
+WHERE rv_domain = 'DRAY STATUS'
+;
