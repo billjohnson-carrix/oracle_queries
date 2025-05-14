@@ -9,7 +9,15 @@ FETCH FIRST 10 ROWS ONLY
 
 SELECT count(DISTINCT gkey)
 FROM mtms.equipment_uses
-; --6,602,804
+; --6,602,804 -- 5,756,247 IN PROD
+
+SELECT count(DISTINCT gkey)
+FROM mtms.equipment_uses_jn
+; -- 2,892,935 IN PROD
+
+SELECT count(*)
+FROM mtms.equipment_uses_jn_arc
+; -- 0
 
 SELECT gkey
 FROM mtms.equipment_uses
@@ -17,7 +25,7 @@ FROM mtms.equipment_uses
 
 SELECT count(*)
 FROM mtms.equipment_uses_jn
-;
+; -- 17,565,639 IN PROD
 
 SELECT *
 FROM mtms.equipment_uses_jn
@@ -76,3 +84,50 @@ SELECT count(*) FROM equipment_uses;
 SELECT systimestamp, uses.* FROM equipment_uses uses;
 
 SELECT note FROM equipment_uses WHERE gkey = 8597722;
+
+SELECT * FROM equipment_uses FETCH FIRST 10 ROWS ONLY;
+SELECT * FROM equipment_uses_jn FETCH FIRST 10 ROWS ONLY;
+
+SELECT *
+FROM equipment_uses_jn
+WHERE gkey = 25822809 --25368210
+ORDER BY jn_entryid
+;
+
+SELECT systimestamp AS extraction_time, vv.* FROM vessel_visits vv;
+SELECT count(*) FROM vessel_visits;
+
+SELECT * FROM vessel_visits_jn;
+SELECT count(*) FROM vessel_visits_jn;
+
+-- Examining archiving process now
+SELECT count(*) FROM equipment_uses_arc; -- 1,131,304 records
+SELECT count(*) FROM equipment_uses_jn_arc; -- 0 records
+SELECT * FROM equipment_uses_arc FETCH FIRST 10 ROWS ONLY;
+
+SELECT * FROM equipment_uses_arc;
+
+WITH overrides AS (
+	SELECT 
+		pts.parm_id PARAMETER
+		, pts.Line_id
+		, pts.option_id "OPTION"
+	FROM parameter_task_settings pts
+	WHERE 
+		pts.parm_id like 'PURG%'
+)
+SELECT o.*
+FROM overrides o
+UNION 
+SELECT 
+	id parameter, 
+	'ALL' line_id, --DEFAULT OPTIONS apply TO ALL line_id
+	default_option_id "OPTION"
+FROM parameters p
+WHERE
+	p.id like 'PURG%'
+	AND p.id not in (SELECT parameter FROM overrides)
+;
+
+SELECT count(*) FROM equipment_uses;
+SELECT sysdate FROM dual;
